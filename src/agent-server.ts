@@ -23,10 +23,12 @@ app.post('/api/chat', async (req, res) => {
       if (!message.tool_calls?.length) { await store.saveSession(messages); return res.json({ message: message.content ?? '', steps: allSteps }) }
       for (const call of message.tool_calls) {
         let args: any = {}; try { args = JSON.parse(call.function.arguments || '{}') } catch { args = {} }
-        const started = Date.now(); let result: any; try { result = await runTool(call.function.name, args) } catch (error: any) { result = { error: error.message } }
-        const skill = await loadSkillForTool(call.function.name); const step = { tool: call.function.name, duration: Date.now() - started, result }; allSteps.push(step)
+        const tool = enabled.find(candidate => candidate.name === call.function.name) ?? await store.getTool(call.function.name)
+        if (!tool) throw new Error(`Tool ${call.function.name} is not registered`)
+        const started = Date.now(); let result: any; try { result = await runTool(tool, args) } catch (error: any) { result = { error: error.message } }
+        const skill = await loadSkillForTool(tool.name); const step = { tool: tool.name, duration: Date.now() - started, result }; allSteps.push(step)
         const context = skill ? `Skill instructions for this tool:\n${skill}\n\nTool result:\n${JSON.stringify(result)}` : JSON.stringify(result)
-        messages.push({ role: 'tool', tool_call_id: call.id, content: context.slice(0, 30000) }); await store.logTool({ name: call.function.name, args, result, skill: skill ? call.function.name : undefined })
+        messages.push({ role: 'tool', tool_call_id: call.id, content: context.slice(0, 30000) }); await store.logTool({ name: tool.name, handler: tool.handler, args, result, skill_loaded: Boolean(skill) })
       }
       if (turn === 5) return res.json({ message: 'I reached the tool-call limit for this request.', steps: allSteps })
     }
