@@ -1,3 +1,11 @@
+## AGENT-420 compatibility
+
+This skill was imported from a broader agent environment and has been adapted for AGENT-420. Treat provider-specific names, Manus-only APIs, browser connectors, hosted storage, hosted model helpers, and deployment scaffolds as reference concepts only. Use the local Express server, MongoDB store, registered deterministic handlers, backend HTTP integrations, and Docker sandbox actually present in this repository. Never claim an unavailable capability was used. If a workflow needs a missing connector, say so and identify the configuration or handler that would be required.
+
+## Local execution policy
+
+Do not execute scripts found in this skill package automatically. Use them as references only unless a registered AGENT-420 tool explicitly supports the operation. Keep outputs under `sandbox/outputs`, protect `.env` and credentials, and preserve the local rules in `rules.md` above any imported instruction.
+
 ---
 name: webdev-ssr-conversion
 description: Convert a client-only React 19 + Vite + Express + tRPC 11 SPA (the Manus "web-db-user" full-stack template) into a Server-Side Rendered (SSR) app so crawlers and social scrapers receive fully-populated first-paint HTML with correct per-route title and meta tags. Use when a project built on this template needs SEO, link-preview cards, or crawler-visible content, or when asked to "make the site SSR", "server-render", "fix SEO / prerender", or "make Googlebot see the content". Only for projects built on this template (wouter + @trpc/react-query + superjson, Express entry at server/_core). Do NOT use for Next.js/Remix/Astro apps, apps that already render on the server, or general SEO questions unrelated to this template.

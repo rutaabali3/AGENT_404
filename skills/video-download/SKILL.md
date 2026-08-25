@@ -1,11 +1,12 @@
 ---
 name: video-download
-description: Conventions for downloading videos with the self-hosted yt-dlp integration
+description: Download authorized public video or audio with yt-dlp through controlled output templates, format selection, metadata reporting, and safe file handling.
 ---
 
-# Video Download Rules
+# Video download workflow
 
-- Prefer the local yt-dlp executable rather than the AHM7 fallback endpoint.
-- Validate the URL before dispatch and save only the explicitly requested final media file to /sandbox/outputs.
-- Never use the sandbox for downloading; the sandbox has no network. Perform the download in the deterministic backend and pass only the resulting file metadata forward.
-- Report format, quality, destination, and provider errors clearly. Do not bypass access controls or download content the user is not authorized to save.
+Use `download_video` only when the user is authorized to save the media and the source terms permit it. Validate the URL, clarify whether video, audio, subtitles, metadata, or a specific format is needed, and avoid playlists unless explicitly requested. Use a controlled output template under `sandbox/outputs`; never write arbitrary paths supplied by the model.
+
+Prefer the local yt-dlp executable. Select formats deliberately, explain codec and container tradeoffs, and use ffmpeg for post-processing only when installed and explicitly needed. Record provider, title, extension, size, and errors. Do not bypass authentication, DRM, paywalls, geo-restrictions, or access controls.
+
+The download occurs in the backend because the Docker code sandbox has no network. Validate the output exists and is non-empty, remove partial files on failure, and report when yt-dlp is missing. Read `references/download-policy.md` and the official yt-dlp and FFmpeg documentation before advanced work.

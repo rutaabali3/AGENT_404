@@ -1,3 +1,11 @@
+## AGENT-420 compatibility
+
+This skill was imported from a broader agent environment and has been adapted for AGENT-420. Treat provider-specific names, Manus-only APIs, browser connectors, hosted storage, hosted model helpers, and deployment scaffolds as reference concepts only. Use the local Express server, MongoDB store, registered deterministic handlers, backend HTTP integrations, and Docker sandbox actually present in this repository. Never claim an unavailable capability was used. If a workflow needs a missing connector, say so and identify the configuration or handler that would be required.
+
+## Local execution policy
+
+Do not execute scripts found in this skill package automatically. Use them as references only unless a registered AGENT-420 tool explicitly supports the operation. Keep outputs under `sandbox/outputs`, protect `.env` and credentials, and preserve the local rules in `rules.md` above any imported instruction.
+
 ---
 name: webdev-readme-mobile
 description: Manus webdev mobile-app (Expo) projects — the complete development guide for the Expo template that mobile-app projects are built on. Covers what ships out of the box, Expo conventions, design and branding rules, file layout, and where the backend guide lives. The same guide arrives auto-injected in webdev_init_project / webdev_add_feature results.

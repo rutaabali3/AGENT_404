@@ -1,11 +1,12 @@
 ---
 name: ahm7-wrapper
-description: Conventions for calling centralized AHM7 adapter functions
+description: Use the registered AHM7 provider boundary for external integrations while enforcing local capability checks, explicit credentials, schema validation, and honest failure reporting.
 ---
 
-# AHM7 Wrapper Rules
+# External provider wrapper workflow
 
-- Call AHM7 only through the centralized wrapper module; do not construct ad hoc provider requests in individual tools.
-- Validate required inputs before making a request and preserve the provider's response shape in the tool result.
-- If an endpoint is unavailable, rate-limited, blocked, or returns an unknown shape, report that plainly and do not silently substitute fabricated output.
-- Keep provider-specific paths, headers, and fallback behavior inside the wrapper so endpoint changes have one maintenance point.
+Treat every AHM7 entry as a provider boundary, not as an implementation guarantee. Before dispatch, identify the exact operation, required credentials, request schema, response shape, privacy impact, and whether the user authorized the action. Validate inputs and redact secrets from logs. Use only the registered handler for the selected operation.
+
+AGENT-420 currently registers many AHM7-compatible names, but unsupported provider operations return a configuration error. Never claim that an integration ran when the tool result says it is unavailable. Do not silently substitute a different provider. For external side effects such as uploads, messages, account changes, or paid actions, require explicit confirmation immediately before execution.
+
+Read `references/provider-contract.md` for the wrapper contract and `references/side-effect-policy.md` for confirmation and privacy requirements.

@@ -1,3 +1,11 @@
+## AGENT-420 compatibility
+
+This skill was imported from a broader agent environment and has been adapted for AGENT-420. Treat provider-specific names, Manus-only APIs, browser connectors, hosted storage, hosted model helpers, and deployment scaffolds as reference concepts only. Use the local Express server, MongoDB store, registered deterministic handlers, backend HTTP integrations, and Docker sandbox actually present in this repository. Never claim an unavailable capability was used. If a workflow needs a missing connector, say so and identify the configuration or handler that would be required.
+
+## Local execution policy
+
+Do not execute scripts found in this skill package automatically. Use them as references only unless a registered AGENT-420 tool explicitly supports the operation. Keep outputs under `sandbox/outputs`, protect `.env` and credentials, and preserve the local rules in `rules.md` above any imported instruction.
+
 ---
 name: tts-prompter
 description: MUST read this skill BEFORE entering generate mode for text-to-speech (TTS) tasks. Covers prompt crafting framework, separating spoken text from style instructions, and using markup tags vs natural language for emotions and non-speech sounds.
@@ -244,4 +252,3 @@ Under other delivery styles (excited announcer, ASMR whisper, news anchor, etc.)
 | Swahili (Kenya) | sw-KE | words | 1.8 |
 | Swedish (Sweden) | sv-SE | words | 1.8 |
 | Urdu (Pakistan) | ur-PK | words | 2.2 |
-
