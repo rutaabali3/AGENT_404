@@ -1,0 +1,16 @@
+---
+title: 'skill.list'
+openapi: 'GET /v2/skill.list'
+---
+
+import Support from "/snippets/support.mdx"
+
+<Support />
+
+<Tip>
+**OAuth scope:** `create_task` or `manage_all_tasks` — see the [Open App](https://open.manus.ai/docs/v2/open-app) guide. With OAuth, results may include private skills bound to this Open App.
+</Tip>
+
+<Tip>
+**Use in tasks:** Pass the returned skill IDs in `enable_skills` or `force_skills` of [task.create](https://open.manus.ai/docs/v2/task.create).
+</Tip>

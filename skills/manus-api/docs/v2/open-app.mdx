@@ -1,0 +1,445 @@
+---
+title: 'Open App'
+description: 'Build an Open App to act on behalf of team users via OAuth2'
+---
+
+import Support from "/snippets/support.mdx"
+
+<Support />
+
+An **Open App** is a third-party integration that acts on behalf of a Manus user. Instead of using a static API key tied to a single account, an Open App lets each user grant your app access through a standard OAuth2 authorization flow, after which your app receives access tokens to call the Manus API on their behalf.
+
+Open Apps are scoped to a team — only members of the same team can authorize the app. This guide covers how to create an Open App, run the OAuth2 flow, and use the resulting tokens.
+
+<Warning>
+**Team only:** Open App creation and authorization require a Team account. Personal accounts cannot create or authorize Open Apps.
+</Warning>
+
+# App management
+
+## Creating an Open App
+
+Create an Open App from the [Manus Integrations settings](https://manus.im/app#settings/integrations/api). Fill in the app name, description, redirect URIs, and homepage URL.
+
+After creation, you'll receive a `client_id` and an initial `client_secret`. **The secret is only shown once** — store it securely.
+
+### Redirect URI rules
+
+- Must be an absolute URI (include scheme).
+- No wildcards (`*`). No fragments (`#`).
+- Forbidden schemes: `javascript`, `data`, `file`, `about`, `vbscript`.
+- `http` / `https` must include a host.
+- Custom schemes are allowed (e.g. `com.example.app://oauth`) for native apps.
+- Matched exactly at authorization time ([RFC 6749 §3.1.2](https://datatracker.ietf.org/doc/html/rfc6749#section-3.1.2)).
+
+## App types
+
+| Type | Description | Who can create |
+|---|---|---|
+| `team` | Standard Open App. Access is limited to the scopes you configure. Only users in the same team can authorize. | Any team member |
+| `trusted_team` | Full-access Open App. After authorization, it has the same permissions as an API key — all scopes are bypassed. Only users in the same team can authorize. | Team Owner or Admin only |
+| `trusted_public` | Same full-access permissions as `trusted_team`, but can be authorized by any Manus user across teams. | Partners only |
+
+### Team app
+
+A team app is the standard Open App type. Access is restricted to the scopes you configure, and only users in the same team as the app creator can authorize it. This is the default type when creating an Open App and is suitable for most third-party integrations.
+
+### Trusted team app
+
+A trusted team app is designed for internal integrations that need unrestricted access to the Manus API, similar to using an API key but with per-user authorization.
+
+Key differences from standard apps:
+- Ignores all scope restrictions — can access every API endpoint including admin-only ones
+- Can view and manage all tasks (not limited to tasks created by the app)
+- Has full access to all connectors without per-connector user authorization
+- The consent page warns users that the app will have full access to their data
+- Upgrading an existing app to trusted invalidates all previously issued tokens (users must re-authorize)
+
+**When to use:**
+- Internal team tools that need full API access
+- Automation that requires managing all user resources
+
+**When NOT to use:**
+- Third-party integrations (use standard `team` app with minimal scopes)
+- Apps that only need to create and manage their own tasks (use `create_task` scope instead)
+
+### Trusted public app
+
+A trusted public app has the same full-access permissions as a trusted team app, but is not restricted to a single team — any Manus user can authorize it. This type is currently not publicly available and is only offered to approved partners. Contact [api-support@manus.ai](mailto:api-support@manus.ai) if you are interested.
+
+## Secret management
+
+Each app can have up to **5** active client secrets, enabling zero-downtime rotation. Create and revoke secrets from the [Manus Integrations settings](https://manus.im/app#settings/integrations/api).
+
+<Steps>
+  <Step title="Create a new secret">
+    Generate a new secret in the settings page. The secret is shown in plaintext — **this is the only time it's visible**.
+  </Step>
+  <Step title="Update your application">
+    Configure your app to use the new secret.
+  </Step>
+  <Step title="Verify">
+    Confirm the new secret works in production.
+  </Step>
+  <Step title="Revoke the old secret">
+    Revoke the old secret in the settings page. It is immediately invalidated.
+  </Step>
+</Steps>
+
+# OAuth flow
+
+## Overview
+
+The implementation follows [RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749) (Authorization Code Grant) and [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636) (PKCE). Three modes are supported:
+
+| Mode | Use case | Requires `client_secret` |
+|---|---|---|
+| **PKCE + Secret** (Recommended) | Backend with extra security (OAuth 2.1) | Yes |
+| **Secret** | Backend services | Yes |
+| **PKCE** | Native apps, CLIs, SPAs | No |
+
+## Scopes
+
+Configure the scopes your app can request in the [Manus Integrations settings](https://manus.im/app#settings/integrations/api).
+
+| Scope | Description | Notes |
+|---|---|---|
+| `create_task` | Create and manage tasks | Can only access tasks created by this app |
+| `manage_all_tasks` | Manage all of the user's tasks | Broad access — use only when necessary |
+| `create_project` | Create projects | |
+| `use_connectors` | Use third-party connectors | Must also specify connector UIDs |
+| `use_my_browsers` | Use My Browser connector | Independent from `use_connectors` |
+
+<Info>
+`use_my_browsers` is a separate scope from `use_connectors` — they do not overlap.
+</Info>
+
+<Tip>
+[Trusted team apps](#trusted-team-app) bypass all scope restrictions — you do not need to configure scopes for them.
+</Tip>
+
+## Authorization flow
+
+### Step 1: Redirect to authorization
+
+Send the user to the consent page:
+
+```
+https://manus.im/openapi/oauth?client_id={client_id}&redirect_uri={redirect_uri}&state={state}
+```
+
+| Parameter | Required | Description |
+|---|---|---|
+| `client_id` | Yes | Your app's client ID. |
+| `redirect_uri` | Yes | Must exactly match one of the registered redirect URIs. |
+| `state` | Recommended | An opaque random string to prevent CSRF attacks. Returned unchanged in the callback — verify it matches before proceeding. |
+
+The consent page displays the app's name, requested scopes, and connector list. The user reviews and approves. The scope is determined automatically from the app's configuration.
+
+### Step 2: Receive the authorization code
+
+After approval, the user is redirected to your registered callback:
+
+```
+{redirect_uri}?code={code}&state={state}
+```
+
+Authorization code properties:
+- Format: `code_{client_id}_{shortuuid}`
+- Expires in **10 minutes**
+- Single-use (atomic consumption, prevents replay)
+
+### Step 3: Exchange code for tokens
+
+<Tabs>
+  <Tab title="PKCE + Secret (Recommended)">
+    ```bash
+    curl -X POST https://api.manus.ai/oauth/token \
+      -H "Content-Type: application/json" \
+      -d '{
+        "grant_type": "authorization_code",
+        "code": "{authorization_code}",
+        "redirect_uri": "{redirect_uri}",
+        "client_id": "{client_id}",
+        "client_secret": "{client_secret}",
+        "code_verifier": "{code_verifier}"
+      }'
+    ```
+  </Tab>
+  <Tab title="Secret">
+    ```bash
+    curl -X POST https://api.manus.ai/oauth/token \
+      -H "Content-Type: application/json" \
+      -d '{
+        "grant_type": "authorization_code",
+        "code": "{authorization_code}",
+        "redirect_uri": "{redirect_uri}",
+        "client_id": "{client_id}",
+        "client_secret": "{client_secret}"
+      }'
+    ```
+  </Tab>
+  <Tab title="PKCE">
+    ```bash
+    curl -X POST https://api.manus.ai/oauth/token \
+      -H "Content-Type: application/json" \
+      -d '{
+        "grant_type": "authorization_code",
+        "code": "{authorization_code}",
+        "redirect_uri": "{redirect_uri}",
+        "client_id": "{client_id}",
+        "code_verifier": "{code_verifier}"
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+Also supports `application/x-www-form-urlencoded` and `Authorization: Basic` header for client credentials ([RFC 6749 §2.3.1](https://datatracker.ietf.org/doc/html/rfc6749#section-2.3.1)).
+
+**Success response:**
+
+```json
+{
+  "access_token": "eyJhbGciOiJI...",
+  "token_type": "Bearer",
+  "expires_in": 86400,
+  "refresh_token": "refresh_xxx_xxx_xxx",
+  "scope": "create_task use_connectors"
+}
+```
+
+| Field | Format | Lifetime |
+|---|---|---|
+| `access_token` | JWT | **24 hours** |
+| `refresh_token` | `refresh_{shortuuid}_{shortuuid}_{shortuuid}` | **30 days** |
+
+### Step 4: Refresh tokens
+
+```bash
+curl -X POST https://api.manus.ai/oauth/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "refresh_token",
+    "refresh_token": "{refresh_token}",
+    "client_id": "{client_id}",
+    "client_secret": "{client_secret}"
+  }'
+```
+
+- **PKCE + Secret flow:** both `client_secret` and `code_verifier` are **required** for refresh.
+- **Secret flow:** `client_secret` is **required** for refresh.
+- **PKCE flow:** `client_secret` is **not** required for refresh.
+- Refresh atomically revokes the old token pair and issues new ones (prevents refresh token replay).
+
+## Token invalidation
+
+A token is invalid when any of these apply:
+- Expired
+- Explicitly revoked
+- The associated Open App has been deleted
+- The app's scopes were expanded (adding new scopes or connector UIDs invalidates all existing tokens)
+- The app was upgraded to [trusted team](#trusted-team-app) type
+
+## Revoking tokens
+
+### App-side: revoke a single token (RFC 7009)
+
+```bash
+curl -X POST https://api.manus.ai/oauth/revoke \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "{access_token_or_refresh_token}",
+    "token_type_hint": "access_token",
+    "client_id": "{client_id}",
+    "client_secret": "{client_secret}"
+  }'
+```
+
+- `token_type_hint` is optional (`access_token` or `refresh_token`) — optimizes lookup order.
+- Always returns HTTP **200** if client credentials are valid, regardless of whether the token exists ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)).
+- PKCE-issued tokens do not require `client_secret` for revocation.
+
+### User-side: revoke grants
+
+Users can view and revoke authorized Open Apps from [Authorized Apps settings](https://manus.im/app#settings/data-controls/authorized-apps). Revoking an app invalidates all of its active tokens.
+
+## Available endpoints
+
+Include the access token in the `Authorization` header:
+
+```bash
+curl https://api.manus.ai/v2/task.list \
+  -H "Authorization: Bearer {access_token}"
+```
+
+OAuth tokens can access the following v2 endpoints. Each endpoint page lists its required scope.
+
+| Endpoint | Required scope |
+|---|---|
+| `task.create` | `create_task` or `manage_all_tasks` |
+| `task.detail` | `create_task` or `manage_all_tasks` |
+| `task.list` | `create_task` or `manage_all_tasks` |
+| `task.update` | `create_task` or `manage_all_tasks` |
+| `task.stop` | `create_task` or `manage_all_tasks` |
+| `task.delete` | `create_task` or `manage_all_tasks` |
+| `task.sendMessage` | `create_task` or `manage_all_tasks` |
+| `task.listMessages` | `create_task` or `manage_all_tasks` |
+| `task.confirmAction` | `create_task` or `manage_all_tasks` |
+| `project.create` | `create_project` or `manage_all_tasks` |
+| `project.list` | `create_project` or `manage_all_tasks` |
+| `connector.list` | `create_task` or `manage_all_tasks` |
+| `skill.list` | `create_task` or `manage_all_tasks` |
+| `file.upload` | `create_task` or `manage_all_tasks` |
+| `file.detail` | `create_task` or `manage_all_tasks` |
+| `file.delete` | `create_task` or `manage_all_tasks` |
+| `browser.onlineList` | `use_my_browsers` |
+
+<Warning>
+Endpoints not listed above — including `agent.*`, `webhook.*`, `usage.*`, and `website.*` — are **API Key only** and cannot be accessed with standard OAuth tokens. [Trusted team apps](#trusted-team-app) can access all endpoints.
+</Warning>
+
+# API behavior with OAuth
+
+This section covers how the API behaves differently when using OAuth tokens compared to API keys.
+
+## Task visibility
+
+With `create_task` scope, your app can only see and operate on tasks it created. With `manage_all_tasks`, all of the user's tasks are accessible — same as API key. [Trusted team apps](#trusted-team-app) always have full access to all tasks.
+
+| Token scope | Visible tasks |
+|---|---|
+| `create_task` | Only tasks created by this Open App |
+| `manage_all_tasks` | All of the user's tasks |
+| Trusted team app | All of the user's tasks |
+
+## Connectors
+
+If your app uses connectors (e.g. GitHub, Notion), enable the `use_connectors` scope and select the connectors your app needs in the [Manus Integrations settings](https://manus.im/app#settings/integrations/api). During authorization, the consent page shows your app's connector list and the user chooses which ones to grant. [Trusted team apps](#trusted-team-app) have full access to all connectors and skip per-connector authorization.
+
+Users can revoke individual connectors at any time, so your app should not assume a previously authorized connector will always be available. The API handles unauthorized connectors differently depending on how you pass them:
+
+- **Explicitly passed in `message.connectors`** — returns an error if the user has not authorized the connector:
+
+  ```json
+  {
+    "code": "permission_denied",
+    "message": "insufficient_scope: connector {uid} not granted"
+  }
+  ```
+
+- **Not passed (relying on defaults)** — unauthorized connectors are silently filtered out. The task is created normally but without those connectors.
+
+When you encounter a connector authorization error, redirect the user to update their grants:
+
+```
+https://manus.im/oauth-apps/connector-consent?client_id={client_id}
+```
+
+## Skills
+
+Open Apps can bundle private skills (up to **50** per app) that are automatically available to Manus in tasks created by the app. Manage skills from the [Manus Integrations settings](https://manus.im/app#settings/integrations/api).
+
+To customize which skills are available for a specific task, pass skill IDs in `message.enable_skills` when calling [task.create](https://open.manus.ai/docs/v2/task.create) or [task.sendMessage](https://open.manus.ai/docs/v2/task.sendMessage). To force Manus to use specific skills, pass them in `message.force_skills`.
+
+## Webhook
+
+Each Open App can configure a dedicated webhook URL to receive event notifications. Set the webhook URL in the [Manus Integrations settings](https://manus.im/app#settings/integrations/api). The URL must be HTTPS.
+
+<Info>
+Webhook events are scoped to the Open App — you will only receive notifications for tasks created through this app's API, not tasks created manually by the user in the Manus client.
+</Info>
+
+See the [Webhooks](https://open.manus.ai/docs/v2/webhooks-overview) guide for event types and the [Webhook Security](https://open.manus.ai/docs/v2/webhooks-security) guide for signature verification.
+
+# Reference
+
+## Rate limits
+
+### OAuth endpoints
+
+| Endpoint | Limit |
+|---|---|
+| `POST /oauth/token` | 60 / min per `client_id` |
+| `POST /oauth/revoke` | 60 / min per `client_id` |
+
+### OpenAPI v2 endpoints
+
+When calling v2 endpoints with an OAuth token, the same **per-user** rate limits apply as with API keys. All tokens belonging to the same user share a single counter. See [Rate Limits](https://open.manus.ai/docs/v2/rate-limits) for per-endpoint limits.
+
+Exceeding any limit returns HTTP **429 Too Many Requests**.
+
+## Error handling
+
+### Authentication errors (HTTP 401)
+
+When calling OpenAPI v2 endpoints, the following 401 errors may occur:
+
+| Message keyword | Meaning | Action |
+|---|---|---|
+| `bearer token is invalid or revoked` | Token expired or was revoked | Refresh the token (see flow below) |
+| `reauthorization_required` | App configuration changed (e.g. upgraded to trusted team, scopes expanded), old tokens invalidated | Skip refresh — redirect user to re-authorize |
+| `invalid token` | JWT is malformed or signature is invalid | Check that the token is correct |
+| `missing authentication` | No authentication header provided | Check the `Authorization` header |
+
+**Recommended 401 handling flow:**
+
+```
+Receive 401 →
+  Message contains "reauthorization_required"?
+    → Redirect user to authorization URL (do NOT attempt refresh)
+  Otherwise →
+    Attempt refresh token
+    → Refresh succeeds: retry the request with new access token
+    → Refresh fails (400 invalid_grant): redirect user to re-authorize
+```
+
+### Token endpoint errors (`/oauth/token` and `/oauth/revoke`)
+
+| `error` | HTTP status | Description |
+|---|---|---|
+| `invalid_request` | 400 | Missing or malformed parameters |
+| `invalid_client` | 401 | Invalid `client_id` or `client_secret` |
+| `invalid_grant` | 400 | Code is invalid, expired, or already used |
+| `unsupported_grant_type` | 400 | Unsupported `grant_type` value |
+| `invalid_scope` | 400 | Requested scope not configured on the app |
+| `server_error` | 500 | Internal server error |
+
+```json
+{
+  "error": "invalid_grant",
+  "error_description": "authorization grant is invalid or expired"
+}
+```
+
+All responses include an `X-Request-Id` header for troubleshooting.
+
+### Insufficient scope
+
+When calling an OpenAPI v2 endpoint without the required scope:
+
+```json
+{
+  "code": "permission_denied",
+  "message": "insufficient_scope: required one of [create_task, manage_all_tasks]"
+}
+```
+
+When using a connector the user has not authorized (see [Connectors](#connectors) for handling):
+
+```json
+{
+  "code": "permission_denied",
+  "message": "insufficient_scope: connector {uid} not granted"
+}
+```
+
+## Best practices
+
+1. **Store secrets securely.** `client_secret` is only shown once at creation. Use a secrets manager — never hardcode it.
+2. **Request minimal scopes.** Only request what your app actually needs. Avoid `manage_all_tasks` unless you truly need access to all user tasks.
+3. **Implement token refresh.** Access tokens expire in 24 hours. Use the refresh token to renew automatically.
+4. **Handle 401 correctly.** Check for `reauthorization_required` before attempting refresh — see [Authentication errors](#authentication-errors-http-401) for the full flow.
+5. **Rotate secrets regularly.** Use multi-secret support for zero-downtime rotation.
+6. **Prefer PKCE for client-side apps.** Native apps and SPAs should use PKCE — never embed a `client_secret` in client-side code.
+7. **Validate the `state` parameter.** Always verify the returned `state` matches the value you sent to prevent CSRF attacks.
+8. **Implement backoff on 429.** Token endpoints are limited to 60 req/min. Use exponential backoff with jitter.

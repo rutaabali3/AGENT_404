@@ -1,0 +1,28 @@
+---
+title: 'usage.availableCredits'
+openapi: 'GET /v2/usage.availableCredits'
+---
+
+import Support from "/snippets/support.mdx"
+
+<Support />
+
+<Tip>
+**Auth:** API Key only — not available with OAuth tokens. The caller's identity is derived entirely from the API key, so the request takes no parameters.
+</Tip>
+
+<Tip>
+**Scope:** For an API key that belongs to a team sub-account, the response reflects the team's shared credit pool. For a personal account, it reflects the personal balance.
+</Tip>
+
+<Tip>
+**`total_credits` is authoritative:** Treat `total_credits` as the single source of truth for spendable balance. Other fields break down where the credits come from but do not always sum to `total_credits` — when the membership has lapsed, `periodic_credits` and `addon_credits` are excluded from the total even though `addon_credits` still reports its real (non-zero) balance.
+</Tip>
+
+<Tip>
+**Quota vs. balance:** `pro_monthly_credits` and `max_refresh_credits` describe how much *will* be issued; `periodic_credits` and `refresh_credits` are how much currently *remains*.
+</Tip>
+
+<Note>
+**Personal accounts only:** `max_refresh_credits`, `next_refresh_time`, and `refresh_interval` are populated only for personal accounts. Team accounts have no daily/weekly refresh, so these return `0` / `0` / `""`. Time fields are Unix timestamps in **seconds** (UTC), not milliseconds.
+</Note>

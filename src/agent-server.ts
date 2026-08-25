@@ -3,7 +3,7 @@ import express from 'express'
 import path from 'node:path'
 import { Store } from './agent/store.js'
 import { runTool, toolSchemas } from './agent/tools.js'
-import { loadRules, loadSkillForTool } from './agent/instructions.js'
+import { loadRules, loadSkillForTool, loadRelevantSkills, listSkillCatalog, localCompatibilityNotice } from './agent/instructions.js'
 
 const app = express(); const store = new Store(); app.use(express.json({ limit: '2mb' })); app.use(express.static(path.resolve('public')))
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'local-agent-studio', database: Boolean(process.env.MONGODB_URI), rules: true }))
@@ -11,8 +11,8 @@ app.get('/api/tools', async (_req, res) => res.json(await store.tools()))
 app.patch('/api/tools/:name', async (req, res) => res.json(await store.setTool(req.params.name, Boolean(req.body.enabled))))
 app.post('/api/chat', async (req, res) => {
   const userMessage = String(req.body.message ?? '').trim(); if (!userMessage) return res.status(400).json({ error: 'Message is required' })
-  const enabled = (await store.tools()).filter(t => t.enabled); const rules = await loadRules()
-  const messages: any[] = [{ role: 'system', content: `${rules}\n\nYou are Local Agent Studio, a practical general-purpose assistant. Explain actions clearly. Use tools when helpful. Never claim code ran unless a tool result confirms it.` }, ...(Array.isArray(req.body.history) ? req.body.history.slice(-12) : []), { role: 'user', content: userMessage }]
+  const enabled = (await store.tools()).filter(t => t.enabled); const rules = await loadRules(); const relevantSkills = await loadRelevantSkills(userMessage); const catalog = await listSkillCatalog(); const catalogText = catalog.map(skill => `- ${skill.skill}: ${skill.description}`).join('\n')
+  const messages: any[] = [{ role: 'system', content: `${rules}\n\n${localCompatibilityNotice()}\n\nYou are Local Agent Studio, a practical general-purpose assistant. Explain actions clearly. Use tools when helpful. Never claim code ran unless a tool result confirms it.\n\nImported skill catalog:\n${catalogText}\n\nRelevant skill instructions for this request:\n${relevantSkills || 'No additional topic skill was selected; use the registered tool descriptions and always-loaded rules.'}` }, ...(Array.isArray(req.body.history) ? req.body.history.slice(-12) : []), { role: 'user', content: userMessage }]
   if (!process.env.DEEPSEEK_API_KEY) return res.json({ message: 'DeepSeek is not configured yet. Add DEEPSEEK_API_KEY to .env, then restart the server.', steps: [] })
   const allSteps: any[] = []
   try {

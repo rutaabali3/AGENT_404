@@ -1,0 +1,16 @@
+---
+title: 'webhook.publicKey'
+openapi: 'GET /v2/webhook.publicKey'
+---
+
+import Support from "/snippets/support.mdx"
+
+<Support />
+
+<Tip>
+**Auth:** API Key only — not available with OAuth tokens.
+</Tip>
+
+<Note>
+Cache the public key on your server. It rarely changes, and fetching it on every webhook request adds unnecessary latency. See the [Webhook Security](https://open.manus.ai/docs/v2/webhooks-security) guide for verification examples.
+</Note>

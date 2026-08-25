@@ -27,9 +27,11 @@ The tool registry includes the core code, filesystem, and web tools, plus the co
 
 The agent now has a separate instruction layer. `rules.md` is loaded into every DeepSeek system message and defines identity, hard boundaries, filesystem scope, credential handling, sandbox networking, and failure-reporting behavior. Tools describe what the agent can do, while rules describe what it must never do and skills describe how to do supported work consistently.
 
-Each supported capability has a matching `skills/<name>/SKILL.md` file. The current skill set covers code execution, DOCX, PDF, XLSX, PPTX, web search, image generation, vision, and the centralized AHM7 wrapper. When a tool is dispatched, the backend loads its matching skill and includes those instructions alongside the tool result in the next model context. This keeps the implementation deterministic without adding a dynamic skill router.
+AGENT-420 includes the complete detailed skill export under `skills/`, including operational workflows, references, bundled documentation, and topic-specific guidance for automation, LLM usage, finance, games, Google Workspace, images, Manus APIs and connectors, presentations, music, persistent computing, OCR, TTS, Typst/PDF work, WebDev integrations, mobile and static applications, and voice transcription. It also retains local runtime skills for filesystem operations, Docker code execution, deterministic PDF/DOCX/XLSX/PPTX generation, web search, video downloads, vision, and AHM7 boundaries.
 
-The build sequence now includes an instruction setup step after tool seeding and before the tool-calling loop: create `rules.md`, create all listed skill files, inject the rules on every request, and bind each tool to its skill file.
+The agent uses progressive disclosure. `rules.md` is always loaded, the catalog metadata is available to the model for every chat, relevant skill bodies are selected from the user request, and the skill bound to a dispatched tool is attached to that tool result. Imported skills that describe Manus-hosted capabilities are treated as procedural guidance only; the runtime compatibility notice requires the model to use only tools actually exposed by AGENT-420 and to report unavailable providers honestly. Bundled `references/`, `scripts/`, and `templates/` are stored for future use but are not executed automatically.
+
+The build sequence now includes an instruction setup step after tool seeding and before the tool-calling loop: create `rules.md`, import the detailed skill catalog, expose skill metadata, route relevant skill context from each request, inject the rules on every request, and bind each dispatched tool to its skill file.
 
 ## Free-tier configuration
 

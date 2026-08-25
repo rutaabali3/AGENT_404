@@ -1,0 +1,18 @@
+---
+title: 'task.detail'
+openapi: 'GET /v2/task.detail'
+---
+
+import Support from "/snippets/support.mdx"
+
+<Support />
+
+<Tip>
+**OAuth scope:** `create_task` or `manage_all_tasks` — see the [Open App](https://open.manus.ai/docs/v2/open-app) guide. With `create_task` scope, can only access tasks created by this Open App.
+</Tip>
+
+<Tip>
+**Status only:** This endpoint returns status and metadata. Use [task.listMessages](https://open.manus.ai/docs/v2/task.listMessages) for the full conversation history and agent outputs.
+
+**Shortcut:** Use `agent-default-main_task` as `task_id` to check the IM agent's main task.
+</Tip>

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Read Special Images"
+  short_description: "Read long, wide, large, and text-dense images safely"
+  default_prompt: "Use $read-special-images to extract and summarize this unusually sized image without guessing."

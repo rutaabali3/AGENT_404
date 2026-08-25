@@ -1,0 +1,43 @@
+---
+title: 'task.sendMessage'
+openapi: 'POST /v2/task.sendMessage'
+---
+
+import Support from "/snippets/support.mdx"
+
+<Support />
+
+<Tip>
+**OAuth scope:** `create_task` or `manage_all_tasks` — see the [Open App](https://open.manus.ai/docs/v2/open-app) guide. With `create_task` scope, can only access tasks created by this Open App.
+</Tip>
+
+<Tip>
+**Shortcut:** Use `agent-default-main_task` as `task_id` to send messages to the IM agent directly.
+
+**Structured Output:** Pass `structured_output_schema` to extract a JSON result when the task next finishes. A new schema replaces the previous one. See the [Structured Output](https://open.manus.ai/docs/v2/structured-output) guide.
+
+**Attach files:** Upload via [file.upload](https://open.manus.ai/docs/v2/file.upload) and pass the `file_id` in the message content, or use `file_url` / `file_data` directly. There is no hard limit on the number of attachments.
+
+**Connectors:** Control this task's connectors with `message.connectors` and the top-level `clear_connectors` flag (three states):
+- **Override** — pass a non-empty `message.connectors` to replace the task's connectors with the new list. Get IDs from [connector.list](https://open.manus.ai/docs/v2/connector.list) or the [Connectors](https://open.manus.ai/docs/v2/connectors) guide.
+- **Clear** — pass `clear_connectors: true` to remove all connectors from the task.
+- **Reuse** (default) — omit both to keep the connectors configured at [task.create](https://open.manus.ai/docs/v2/task.create) time.
+
+Passing a non-empty `message.connectors` together with `clear_connectors: true` returns `InvalidArgument`.
+
+**Enable skills:** Pass skill IDs from [skill.list](https://open.manus.ai/docs/v2/skill.list) in `message.enable_skills` to control which skills are available for the agent. If omitted, the user's default enabled skills are loaded automatically.
+
+**Force skills:** Pass skill IDs in `message.force_skills` to ensure the agent invokes them. Forced skills are automatically available even if not listed in `enable_skills`.
+
+**Waiting events:** Use this endpoint to reply when the agent asks a question (`messageAskUser`). For other waiting types like `gmailSendAction` or `deployAction`, use [task.confirmAction](https://open.manus.ai/docs/v2/task.confirmAction) instead.
+</Tip>
+
+<Warning>
+**Attachment size limits** depend on how you reference the file:
+
+- `file_id` — a file pre-uploaded via [file.upload](https://open.manus.ai/docs/v2/file.upload). No additional limit here; it is bound only by the upload limits (≤ **512 MB** per file).
+- `file_url` — a direct URL that Manus downloads. Capped at **20 MB**.
+- `file_data` — inline base64 content. Capped at **20 MB** after decoding (~26.7 MB of base64 text).
+
+These are two different paths: large files must be uploaded via [file.upload](https://open.manus.ai/docs/v2/file.upload) first and referenced by `file_id`. Inline `file_url` / `file_data` attachments cannot exceed 20 MB.
+</Warning>

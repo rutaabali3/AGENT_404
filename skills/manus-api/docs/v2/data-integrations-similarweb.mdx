@@ -1,0 +1,174 @@
+---
+title: "Similarweb"
+description: "Access website traffic and digital market intelligence data"
+---
+
+import Support from "/snippets/support.mdx"
+
+import { CodePrompt } from '/snippets/code-prompt.jsx'
+
+## Overview
+
+Manus integrates Similarweb data access directly into your workflow. Without additional configuration or API management, you can access comprehensive website analytics and digital market intelligence simply through natural language prompts.
+
+## How to Use
+
+Simply mention the data you need in your prompt. Manus will automatically use Similarweb to fetch the information when related info is detected.
+
+Traffic Analysis
+
+<CodePrompt>
+  Show me monthly visits, bounce rate, and pages per visit for example.com over the last 6 months. Include month-over-month changes.
+</CodePrompt>
+
+Marketing Channels
+
+<CodePrompt>
+  Break down the marketing channel mix for example.com. What percentage comes from direct, organic search, paid, social, referral, and display?
+</CodePrompt>
+
+Geographic Analysis
+
+<CodePrompt>
+  Show me the top 10 countries by traffic share for example.com in 2025 Q4. I need to understand their geographic footprint.
+</CodePrompt>
+
+Keywords Overview
+
+```text
+Query the global search volume, clicks, and the composition of organic vs. paid traffic for the keyword 'manus'.
+```
+
+Website Analysis Keywords
+
+```text
+Analyze the main search traffic keywords for 'manus.im', listing the top keywords along with their traffic share and search intent.
+```
+
+Incoming Traffic: Referrals Desktop
+
+```text
+Query the main external referring websites for 'manus.im' on desktop, and list their traffic contribution share.
+```
+
+Incoming Traffic: Referrals Mobile Web
+
+```text
+Query the main referring sources for 'manus.im' on mobile web, to see which websites mobile users are jumping from.
+```
+
+Outgoing Traffic: Outgoing Referrals Mobile Web
+
+```text
+Analyze the outbound traffic of 'manus.im' mobile users, to see which domains users visit most frequently after leaving the site.
+```
+
+Keywords Landing Pages
+
+```text
+Query which specific URLs under the 'manus.im' domain receive the most organic search traffic, along with the desktop and mobile share.
+```
+
+Popular Pages
+
+```text
+Get the top popular pages on the 'manus.im' website based on overall traffic, and their respective share of the total site traffic.
+```
+
+## Available Endpoints
+
+The table below lists all supported endpoints. Click any endpoint name to view detailed API documentation and parameters:
+
+### Endpoint Overview
+
+| Endpoint | Unit Cost (Credits) | Description |
+| --- | --- | --- |
+| Get Unique Visit | 4 | Total number of unique visitors to a domain within a specific timeframe |
+| Get Global Rank (Desktop\+Mobile Web) | 4 | Website’s ranking compared to all websites globally |
+| Get Total Visits (Desktop\+Mobile Web) | 4 | Total number of visits to the website |
+| Get Bounce Rate (Desktop\+Mobile Web) | 4 | Percentage of visitors who leave after viewing one page |
+| Get Total Traffic by Country (Desktop\+Mobile Web) | 28 | Geographic distribution of website traffic |
+| Get Traffic Sources by Marketing Channel (Desktop) | 28 | Breakdown of desktop traffic channels |
+| Get Traffic Sources by Marketing Channel (Mobile) | 28 | Breakdown of mobile traffic channels |
+| Get Keywords Overview | 68 per keyword | Overall search performance for specific keywords |
+| Get Website Analysis Keywords | 0.50 per keyword | Specific keywords driving search traffic to a domain |
+| Get Incoming Traffic: Referrals Desktop | 12 | External websites driving traffic to target site on Desktop |
+| Get Incoming Traffic: Referrals Mobile Web | 12 | External websites driving traffic to target site on Mobile |
+| Get outgoing Traffic: Outgoing Referrals Mobile Web | 12 | Where users go after leaving the target site on Mobile |
+| Get Keywords Landing Pages | 0.40 per landing page | Specific URLs receiving the most organic/paid search traffic |
+| Get Popular Pages | 12 | Most visited pages across all traffic channels |
+
+### Data Details
+
+| Endpoint | Regional Granularity | Accessible Information |
+| --- | --- | --- |
+| Get Unique Visit | Worldwide | Share of desktop-only UV; share of mobile web-only UV; share of UV across both mobile web and desktop |
+| Get Global Rank (Desktop\+Mobile Web) | Worldwide | Monthly Global Rank |
+| Get Total Visits (Desktop\+Mobile Web) | Worldwide | Total visits to the website across desktop and web mobile |
+| Get Bounce Rate (Desktop\+Mobile Web) | Worldwide | Monthly Bounce Rate |
+| Get Total Traffic by Country (Desktop\+Mobile Web) | By Country | Country Name, Country Ranking by share, Share of traffic by country, Total visits by country, Pages per visit by country, Average time by country, Bounce rate by country |
+| Get Traffic Sources by Marketing Channel (Desktop) | Worldwide | Estimated organic and paid desktop visits by channel (Organic Search, Paid Search, Direct, Display Ads, Email, Referrals and Social) |
+| Get Traffic Sources by Marketing Channel (Mobile) | Worldwide | Estimated organic and paid mobile visits by channel (Organic Search, Paid Search, Direct, Display Ads, Email, Referrals and Social) |
+| Get Keywords Overview | Worldwide | Total search volume, clicks, zero-clicks, search difficulty, and organic/paid traffic composition for specific keywords |
+| Get Website Analysis Keywords | Worldwide | Keyword list, traffic share, CPC, and search intent (navigational, informational, etc.) |
+| Get Incoming Traffic: Referrals Desktop | Worldwide | Top referring domains and their traffic share on Desktop |
+| Get Incoming Traffic: Referrals Mobile Web | Worldwide | Top referring domains and their traffic share on Mobile |
+| Get Outgoing Traffic: Outgoing Referrals Mobile Web | Worldwide | Top destination domains and their traffic share after users leave the site on Mobile |
+| Get Keywords Landing Pages | Worldwide | Top URLs receiving search traffic, clicks, traffic share, and keyword count (Search traffic only) |
+| Get Popular Pages | Worldwide | Top pages by total visits across all channels, traffic share, and change |
+
+## Price Model
+
+This data integration follows Similarweb's multiplier-based pricing model, where costs are calculated by multiplying multiple factors. [Learn more about pricing →](https://developers.similarweb.com/docs/data-credits-unpublished-whats-new-in-v40)
+
+See the table below for detailed pricing factors:
+
+### Pricing Factors
+
+| Factor | Description | Multiplier |
+| --- | --- | --- |
+| **Domains** | Number of unique domains requested | 1x per domain |
+| **Pages** | Number of pages requested | 1x |
+| **Keywords** | Number of keywords searched | 1x |
+| **Granularity** | Data resolution<br />_Monthly data only_ | 1x |
+| **Countries** | Number of countries queried<br />_Global = 1x, specific countries might add cost_ | 1x per country |
+| **Time Span** | Historical data range<br />_Max: 12 months_ | 1x per month |
+| **Unit Cost** | Base cost varies by endpoint category | Varies by endpoint |
+
+<Info>
+  **Important Notes**
+
+  - Data is available at **monthly granularity only**
+  - Maximum **12 months** of historical data available
+  - Available to **Pro plan users**
+  - Consumes **paid subscription or add-on credits only**
+  - Each user can use a maximum of 20,000 Manus credits for Similarweb integration per month.
+</Info>
+
+<Note>
+  Manus automatically optimizes queries to minimize costs while delivering accurate results. Session Credits Usage is tracked in your dashboard.
+</Note>
+
+### Example Calculations
+
+<Tip>
+  **Cost** = **Domains** x **Granularity** × **Countries** × **Time Span** x **Unit Cost**
+</Tip>
+
+<Note>
+  The above calculations reflect Data API costs only. Total session credits include additional charges for AI processing, computation, and other features used during the session.
+</Note>
+
+<Warning>
+  Data accuracy is determined by Similarweb's statistical scope and algorithms. Estimates may vary by website. Always verify critical data with multiple sources.
+</Warning>
+
+## Reference
+
+- [Similarweb Developer Documentation](https://developers.similarweb.com/docs/similarweb-web-traffic-api)
+- [Similarweb Data Credits System](https://developers.similarweb.com/docs/data-credits-unpublished-whats-new-in-v40)
+- [Data Accuracy and Methodology](https://support.similarweb.com/hc/en-us/articles/360002219177-Similarweb-s-Data-Accuracy)
+
+---
+
+Need help with Similarweb data? Ask Manus in natural language and it will handle the technical details for you.

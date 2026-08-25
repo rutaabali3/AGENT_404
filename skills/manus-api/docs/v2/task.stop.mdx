@@ -1,0 +1,16 @@
+---
+title: 'task.stop'
+openapi: 'POST /v2/task.stop'
+---
+
+import Support from "/snippets/support.mdx"
+
+<Support />
+
+<Tip>
+**OAuth scope:** `create_task` or `manage_all_tasks` — see the [Open App](https://open.manus.ai/docs/v2/open-app) guide. With `create_task` scope, can only access tasks created by this Open App.
+</Tip>
+
+<Tip>
+**Resumable:** A stopped task can still be resumed by sending a new message via [task.sendMessage](https://open.manus.ai/docs/v2/task.sendMessage).
+</Tip>
