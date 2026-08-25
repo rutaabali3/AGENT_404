@@ -23,6 +23,14 @@ Python and Node execution are sent to an ephemeral container with a read-only ro
 
 The tool registry includes the core code, filesystem, and web tools, plus the complete requested AHM7 integration inventory. AHM7 entries are visible and toggleable; the wrapper slots return a clear configuration message until provider-specific credentials and payload contracts are supplied.
 
+## Skills and rules
+
+The agent now has a separate instruction layer. `rules.md` is loaded into every DeepSeek system message and defines identity, hard boundaries, filesystem scope, credential handling, sandbox networking, and failure-reporting behavior. Tools describe what the agent can do, while rules describe what it must never do and skills describe how to do supported work consistently.
+
+Each supported capability has a matching `skills/<name>/SKILL.md` file. The current skill set covers code execution, DOCX, PDF, XLSX, PPTX, web search, image generation, vision, and the centralized AHM7 wrapper. When a tool is dispatched, the backend loads its matching skill and includes those instructions alongside the tool result in the next model context. This keeps the implementation deterministic without adding a dynamic skill router.
+
+The build sequence now includes an instruction setup step after tool seeding and before the tool-calling loop: create `rules.md`, create all listed skill files, inject the rules on every request, and bind each tool to its skill file.
+
 ## Free-tier configuration
 
 DeepSeek, MongoDB Atlas M0, SearXNG, and Tavily are all optional integrations. SearXNG is the preferred search path when a local instance is available; Tavily is a configured fallback. No cloud deployment is required for this repository.
