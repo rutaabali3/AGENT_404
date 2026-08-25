@@ -2,3 +2,5 @@ sandbox/*
 .env
 dist
 node_modules
+.env.example
+atlas-credentials*.env
