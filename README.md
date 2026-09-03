@@ -47,3 +47,7 @@ npm run build
 ```
 
 The current repository preserves the original WhatsApp bot files for reference, but the active package scripts now target Local Agent Studio.
+
+## Contributors
+
+- Jules
