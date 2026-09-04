@@ -7,7 +7,16 @@ import pptxgenModule from 'pptxgenjs'
 const PptxGenJS: any = pptxgenModule as any
 
 const outputs = path.resolve(process.env.OUTPUTS_DIR ?? './sandbox/outputs')
-function outputPath(filename: string, extension: string) { const clean = path.basename(filename || `agent-output.${extension}`); return path.join(outputs, clean.endsWith(`.${extension}`) ? clean : `${clean}.${extension}`) }
+function outputPath(filename: string, extension: string) {
+  const raw = String(filename || `agent-output.${extension}`).replace(/\\/g, '/')
+  const clean = path.basename(raw)
+  const formatted = clean.endsWith(`.${extension}`) ? clean : `${clean}.${extension}`
+  const target = path.resolve(outputs, formatted)
+  if (target !== outputs && !target.startsWith(outputs + path.sep)) {
+    throw new Error('Path is outside the outputs directory')
+  }
+  return target
+}
 async function ensureOutputs() { await fs.mkdir(outputs, { recursive: true }) }
 function lines(content: string) { return String(content).split(/\r?\n/).map(line => line.trim()).filter(Boolean) }
 
