@@ -34,6 +34,7 @@ test('web.fetch prevents SSRF and non-http(s) requests', async () => {
     'gopher://localhost:70',
     'http://localhost/admin',
     'http://127.0.0.1:8787',
+    'http://[::1]:8787',
     'http://169.254.169.254/latest/meta-data/',
     'http://10.0.0.1/internal',
     'http://172.16.0.1/private',
@@ -43,6 +44,27 @@ test('web.fetch prevents SSRF and non-http(s) requests', async () => {
   for (const url of blockedUrls) {
     await assert.rejects(async () => {
       await fetchHandler({ url })
+    })
+  }
+})
+
+test('media.downloadVideo prevents SSRF and non-http(s) requests', async () => {
+  const { handlers } = await import('../src/agent/tools.js')
+  const downloadVideoHandler = handlers['media.downloadVideo']
+
+  const blockedUrls = [
+    'file:///etc/passwd',
+    'http://localhost:8787',
+    'http://127.0.0.1:8787',
+    'http://[::1]:8787',
+    'http://169.254.169.254/latest/meta-data/',
+    'http://10.0.0.1/video.mp4',
+    'http://192.168.1.1/stream'
+  ]
+
+  for (const url of blockedUrls) {
+    await assert.rejects(async () => {
+      await downloadVideoHandler({ url })
     })
   }
 })

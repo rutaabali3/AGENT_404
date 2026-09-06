@@ -18,14 +18,17 @@ function assertSafeUrl(urlString: string) {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('Only http and https protocols are allowed')
   }
-  const hostname = parsed.hostname.toLowerCase()
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '')
   if (
     hostname === 'localhost' ||
     hostname.endsWith('.localhost') ||
     hostname.endsWith('.local') ||
     hostname.endsWith('.internal') ||
     hostname === '::1' ||
-    hostname === '0.0.0.0'
+    hostname === '::' ||
+    hostname === '0.0.0.0' ||
+    hostname.startsWith('fe80:') ||
+    hostname.startsWith('::ffff:')
   ) {
     throw new Error('Access to local or internal network host is restricted')
   }
@@ -59,7 +62,7 @@ export const handlers: Record<string, (args: any) => Promise<any>> = {
   'web.fetch': async a => {
     assertSafeUrl(a.url); const { data } = await axios.get(a.url, { timeout: 15000, responseType: 'text' }); return String(data).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 20000)
   },
-  'media.downloadVideo': async a => { const outputDir = path.resolve(process.env.OUTPUTS_DIR ?? './sandbox/outputs'); await fs.mkdir(outputDir, { recursive: true }); const template = path.join(outputDir, '%(title).100s.%(ext)s'); try { const { stdout, stderr } = await exec('yt-dlp', ['--no-playlist', '-o', template, a.url], { maxBuffer: 1024 * 1024 }); return { provider: 'yt-dlp', stdout, stderr, outputs: await fs.readdir(outputDir) } } catch (error: any) { return { error: `yt-dlp unavailable or download failed: ${error.message}`, hint: 'Install yt-dlp locally to enable download_video.' } } },
+  'media.downloadVideo': async a => { assertSafeUrl(a?.url ?? ''); const outputDir = path.resolve(process.env.OUTPUTS_DIR ?? './sandbox/outputs'); await fs.mkdir(outputDir, { recursive: true }); const template = path.join(outputDir, '%(title).100s.%(ext)s'); try { const { stdout, stderr } = await exec('yt-dlp', ['--no-playlist', '-o', template, a.url], { maxBuffer: 1024 * 1024 }); return { provider: 'yt-dlp', stdout, stderr, outputs: await fs.readdir(outputDir) } } catch (error: any) { return { error: `yt-dlp unavailable or download failed: ${error.message}`, hint: 'Install yt-dlp locally to enable download_video.' } } },
 }
 for (const tool of defaultTools.filter(t => t.handler.startsWith('ahm7.'))) handlers[tool.handler] = async () => ({ error: 'AHM7 integration is registered but not configured in this local build.' })
 export function toolSchemas(tools: ToolDoc[]) { return tools.filter(t => t.enabled).map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })) }
