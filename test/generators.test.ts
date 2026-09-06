@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import axios from 'axios'
 import { convertToPdf, generateDocx, generateXlsx, generatePptx } from '../src/agent/generators.js'
 
 test('outputPath sanitizes path traversal attempts and keeps output inside outputs directory', async () => {
@@ -23,6 +24,27 @@ test('outputPath sanitizes path traversal attempts and keeps output inside outpu
   await fs.rm(path.join(outputs, 'test_traversal.docx'), { force: true })
   await fs.rm(path.join(outputs, 'passwd.xlsx'), { force: true })
   await fs.rm(path.join(outputs, 'test_traversal.pptx'), { force: true })
+})
+
+test('web.fetch limits maximum response size via maxContentLength and maxBodyLength', async () => {
+  const { handlers } = await import('../src/agent/tools.js')
+  const fetchHandler = handlers['web.fetch']
+
+  let capturedOptions: any = null
+  const originalGet = axios.get
+  axios.get = (async (url: string, options: any) => {
+    capturedOptions = options
+    return { data: '<html><body>Hello World</body></html>' }
+  }) as any
+
+  try {
+    const res = await fetchHandler({ url: 'https://example.com' })
+    assert.equal(capturedOptions?.maxContentLength, 5 * 1024 * 1024)
+    assert.equal(capturedOptions?.maxBodyLength, 5 * 1024 * 1024)
+    assert.equal(res.trim(), 'Hello World')
+  } finally {
+    axios.get = originalGet
+  }
 })
 
 test('web.fetch prevents SSRF and non-http(s) requests', async () => {
