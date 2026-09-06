@@ -63,6 +63,11 @@ const keywordToSkill: Array<[RegExp, string]> = [
 const cache = new Map<string, string>()
 const metadataCache = new Map<string, { name: string; description: string; skill: string }[]>()
 
+export function clearInstructionsCache() {
+  cache.clear()
+  metadataCache.clear()
+}
+
 async function readCached(file: string) {
   const cached = cache.get(file)
   if (cached) return cached

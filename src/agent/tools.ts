@@ -8,7 +8,7 @@ import { convertToPdf, generateDocx, generateXlsx, generatePptx } from './genera
 const exec = promisify(execFile)
 const root = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
 
-function assertSafeUrl(urlString: string) {
+export function assertSafeUrl(urlString: string) {
   let parsed: URL
   try {
     parsed = new URL(urlString)
@@ -23,14 +23,22 @@ function assertSafeUrl(urlString: string) {
     hostname === 'localhost' ||
     hostname.endsWith('.localhost') ||
     hostname.endsWith('.local') ||
-    hostname.endsWith('.internal') ||
-    hostname === '::1' ||
-    hostname === '::' ||
-    hostname === '0.0.0.0' ||
-    hostname.startsWith('fe80:') ||
-    hostname.startsWith('::ffff:')
+    hostname.endsWith('.internal')
   ) {
     throw new Error('Access to local or internal network host is restricted')
+  }
+  if (hostname.includes(':')) {
+    if (
+      hostname === '::1' ||
+      hostname === '::' ||
+      hostname === '0.0.0.0' ||
+      hostname.startsWith('fe80:') ||
+      hostname.startsWith('fc') ||
+      hostname.startsWith('fd') ||
+      hostname.startsWith('::ffff:')
+    ) {
+      throw new Error('Access to local or internal network host is restricted')
+    }
   }
   // Check IPv4 addresses
   const ipv4Match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname)
@@ -47,6 +55,9 @@ function assertSafeUrl(urlString: string) {
       throw new Error('Access to private or local IP address is restricted')
     }
   }
+  if (hostname === '0' || /^0x[0-9a-f]+$/i.test(hostname) || /^\d+$/.test(hostname)) {
+    throw new Error('Access to private or local IP address is restricted')
+  }
 }
 async function safeFile(p = '') { const resolved = path.resolve(root, p); if (resolved !== root && !resolved.startsWith(root + path.sep)) throw new Error('Path is outside the workspace'); return resolved }
 export async function listFiles() { await fs.mkdir(root, { recursive: true }); return (await fs.readdir(root, { withFileTypes: true })).map(x => ({ name: x.name, type: x.isDirectory() ? 'directory' : 'file' })) }
@@ -57,12 +68,12 @@ export const handlers: Record<string, (args: any) => Promise<any>> = {
   'filesystem.list': async () => listFiles(), 'filesystem.read': async a => readFile(a.path), 'filesystem.write': async a => writeFile(a.path, a.content),
   'files.convertToPdf': async a => convertToPdf(a), 'files.generateDocx': async a => generateDocx(a), 'files.generateXlsx': async a => generateXlsx(a), 'files.generatePptx': async a => generatePptx(a),
   'sandbox.executePython': async a => dockerRun('python', a.code), 'sandbox.executeNode': async a => dockerRun('node', a.code),
-  'web.searchSearxng': async a => { const url = process.env.SEARXNG_URL ?? 'http://localhost:8080'; try { const { data } = await axios.get(`${url}/search`, { params: { q: a.query, format: 'json' }, timeout: 10000 }); return { provider: 'searxng', results: data.results?.slice(0, 8) ?? data } } catch (error: any) { if (!process.env.TAVILY_API_KEY) return { error: `SearXNG unavailable: ${error.message}`, fallback: 'TAVILY_API_KEY is not configured' }; const { data } = await axios.post('https://api.tavily.com/search', { api_key: process.env.TAVILY_API_KEY, query: a.query, max_results: 5 }); return { provider: 'tavily-fallback', results: data } } },
-  'web.searchTavily': async a => { if (!process.env.TAVILY_API_KEY) return { error: 'TAVILY_API_KEY is not configured' }; const { data } = await axios.post('https://api.tavily.com/search', { api_key: process.env.TAVILY_API_KEY, query: a.query, max_results: 5 }); return data },
+  'web.searchSearxng': async a => { const url = process.env.SEARXNG_URL ?? 'http://localhost:8080'; try { const { data } = await axios.get(`${url}/search`, { params: { q: a.query, format: 'json' }, timeout: 10000 }); return { provider: 'searxng', results: data.results?.slice(0, 8) ?? data } } catch (error: any) { if (!process.env.TAVILY_API_KEY) return { error: `SearXNG unavailable: ${error.message}`, fallback: 'TAVILY_API_KEY is not configured' }; const { data } = await axios.post('https://api.tavily.com/search', { api_key: process.env.TAVILY_API_KEY, query: a.query, max_results: 5 }, { timeout: 10000 }); return { provider: 'tavily-fallback', results: data } } },
+  'web.searchTavily': async a => { if (!process.env.TAVILY_API_KEY) return { error: 'TAVILY_API_KEY is not configured' }; const { data } = await axios.post('https://api.tavily.com/search', { api_key: process.env.TAVILY_API_KEY, query: a.query, max_results: 5 }, { timeout: 10000 }); return data },
   'web.fetch': async a => {
-    assertSafeUrl(a.url); const { data } = await axios.get(a.url, { timeout: 15000, responseType: 'text' }); return String(data).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 20000)
+    assertSafeUrl(a.url); const { data } = await axios.get(a.url, { timeout: 15000, responseType: 'text', maxContentLength: 5 * 1024 * 1024, maxBodyLength: 5 * 1024 * 1024 }); return String(data).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 20000)
   },
-  'media.downloadVideo': async a => { assertSafeUrl(a?.url ?? ''); const outputDir = path.resolve(process.env.OUTPUTS_DIR ?? './sandbox/outputs'); await fs.mkdir(outputDir, { recursive: true }); const template = path.join(outputDir, '%(title).100s.%(ext)s'); try { const { stdout, stderr } = await exec('yt-dlp', ['--no-playlist', '-o', template, a.url], { maxBuffer: 1024 * 1024 }); return { provider: 'yt-dlp', stdout, stderr, outputs: await fs.readdir(outputDir) } } catch (error: any) { return { error: `yt-dlp unavailable or download failed: ${error.message}`, hint: 'Install yt-dlp locally to enable download_video.' } } },
+  'media.downloadVideo': async a => { assertSafeUrl(a?.url ?? ''); const outputDir = path.resolve(process.env.OUTPUTS_DIR ?? './sandbox/outputs'); await fs.mkdir(outputDir, { recursive: true }); const template = path.join(outputDir, '%(title).100s.%(ext)s'); try { const { stdout, stderr } = await exec('yt-dlp', ['--no-playlist', '-o', template, '--', a.url], { maxBuffer: 1024 * 1024 }); return { provider: 'yt-dlp', stdout, stderr, outputs: await fs.readdir(outputDir) } } catch (error: any) { return { error: `yt-dlp unavailable or download failed: ${error.message}`, hint: 'Install yt-dlp locally to enable download_video.' } } },
 }
 for (const tool of defaultTools.filter(t => t.handler.startsWith('ahm7.'))) handlers[tool.handler] = async () => ({ error: 'AHM7 integration is registered but not configured in this local build.' })
 export function toolSchemas(tools: ToolDoc[]) { return tools.filter(t => t.enabled).map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })) }
