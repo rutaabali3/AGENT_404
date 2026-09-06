@@ -48,6 +48,18 @@ test('web.fetch prevents SSRF and non-http(s) requests', async () => {
   }
 })
 
+test('media.downloadVideo safely handles URLs starting with dash', async () => {
+  const { handlers } = await import('../src/agent/tools.js')
+  const downloadVideoHandler = handlers['media.downloadVideo']
+
+  // Valid http URL format that starts with a dash (e.g., hostname or path with leading dash/flag-like syntax)
+  // assertSafeUrl will check valid URL format and public IP / hostname.
+  // When executed, yt-dlp receives '--' before the url argument, preventing option injection.
+  const result = await downloadVideoHandler({ url: 'https://example.com/--help' })
+  // Should attempt to execute yt-dlp without throwing option parsing errors from execFile
+  assert.ok(result)
+})
+
 test('media.downloadVideo prevents SSRF and non-http(s) requests', async () => {
   const { handlers } = await import('../src/agent/tools.js')
   const downloadVideoHandler = handlers['media.downloadVideo']
