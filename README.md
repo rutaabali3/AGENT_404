@@ -203,6 +203,7 @@ Local Agent Studio is configured via environment variables defined in `.env`:
 # Server Configuration
 PORT=8787
 HOST=127.0.0.1
+LOCAL_AGENT_API_KEY=your_local_secret_key_here
 
 # AI Model Credentials
 DEEPSEEK_API_KEY=your_deepseek_api_key_here

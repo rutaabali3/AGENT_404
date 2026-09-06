@@ -10,6 +10,18 @@ const store = new Store()
 app.use(express.json({ limit: '2mb' }))
 app.use(express.static(path.resolve('public')))
 
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health') return next()
+  const apiKey = process.env.LOCAL_AGENT_API_KEY
+  if (!apiKey) return next()
+  const authHeader = req.headers.authorization
+  const headerApiKey = req.headers['x-api-key']
+  const providedKey = (typeof headerApiKey === 'string' ? headerApiKey : undefined) ??
+    (authHeader ? authHeader.replace(/^Bearer\s+/i, '') : undefined)
+  if (!providedKey || providedKey !== apiKey) return res.status(401).json({ error: 'Unauthorized' })
+  next()
+})
+
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
