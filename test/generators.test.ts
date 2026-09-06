@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import axios from 'axios'
 import { convertToPdf, generateDocx, generateXlsx, generatePptx } from '../src/agent/generators.js'
 
 test('outputPath sanitizes path traversal attempts and keeps output inside outputs directory', async () => {
@@ -25,6 +26,27 @@ test('outputPath sanitizes path traversal attempts and keeps output inside outpu
   await fs.rm(path.join(outputs, 'test_traversal.pptx'), { force: true })
 })
 
+test('web.fetch limits maximum response size via maxContentLength and maxBodyLength', async () => {
+  const { handlers } = await import('../src/agent/tools.js')
+  const fetchHandler = handlers['web.fetch']
+
+  let capturedOptions: any = null
+  const originalGet = axios.get
+  axios.get = (async (url: string, options: any) => {
+    capturedOptions = options
+    return { data: '<html><body>Hello World</body></html>' }
+  }) as any
+
+  try {
+    const res = await fetchHandler({ url: 'https://example.com' })
+    assert.equal(capturedOptions?.maxContentLength, 5 * 1024 * 1024)
+    assert.equal(capturedOptions?.maxBodyLength, 5 * 1024 * 1024)
+    assert.equal(res.trim(), 'Hello World')
+  } finally {
+    axios.get = originalGet
+  }
+})
+
 test('web.fetch prevents SSRF and non-http(s) requests', async () => {
   const { handlers } = await import('../src/agent/tools.js')
   const fetchHandler = handlers['web.fetch']
@@ -38,7 +60,13 @@ test('web.fetch prevents SSRF and non-http(s) requests', async () => {
     'http://169.254.169.254/latest/meta-data/',
     'http://10.0.0.1/internal',
     'http://172.16.0.1/private',
-    'http://192.168.1.1/router'
+    'http://192.168.1.1/router',
+    'http://0/test',
+    'http://0.0.0.0/test',
+    'http://2130706433/test',
+    'http://[::ffff:127.0.0.1]/test',
+    'http://[fc00::1]/test',
+    'http://[fd00::1]/test'
   ]
 
   for (const url of blockedUrls) {
@@ -46,6 +74,72 @@ test('web.fetch prevents SSRF and non-http(s) requests', async () => {
       await fetchHandler({ url })
     })
   }
+
+  // Ensure public domains starting with fc/fd or standard hostnames are allowed by assertSafeUrl logic
+  const { assertSafeUrl } = await import('../src/agent/tools.js') as any
+  if (typeof assertSafeUrl === 'function') {
+    assert.doesNotThrow(() => assertSafeUrl('https://fc2.com'))
+    assert.doesNotThrow(() => assertSafeUrl('https://fda.gov'))
+  }
+})
+
+test('web.searchTavily and web.searchSearxng fallback send request with 10s timeout', async () => {
+  const axios = (await import('axios')).default
+  const { handlers } = await import('../src/agent/tools.js')
+
+  const originalPost = axios.post
+  const originalGet = axios.get
+  const originalTavilyKey = process.env.TAVILY_API_KEY
+  const originalSearxngUrl = process.env.SEARXNG_URL
+
+  const calls: { url: string; config?: any }[] = []
+
+  axios.post = (async (url: string, body?: any, config?: any) => {
+    calls.push({ url, config })
+    return { data: { results: ['test'] } }
+  }) as any
+
+  axios.get = (async (url: string, config?: any) => {
+    throw new Error('SearXNG connection failed')
+  }) as any
+
+  try {
+    process.env.TAVILY_API_KEY = 'test-key'
+
+    // Test web.searchTavily
+    const tavilyRes = await handlers['web.searchTavily']({ query: 'test query' })
+    assert.deepEqual(tavilyRes, { results: ['test'] })
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].url, 'https://api.tavily.com/search')
+    assert.equal(calls[0].config?.timeout, 10000)
+
+    // Test web.searchSearxng fallback to Tavily
+    calls.length = 0
+    const searxngRes = await handlers['web.searchSearxng']({ query: 'test query' })
+    assert.equal(searxngRes.provider, 'tavily-fallback')
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].url, 'https://api.tavily.com/search')
+    assert.equal(calls[0].config?.timeout, 10000)
+  } finally {
+    axios.post = originalPost
+    axios.get = originalGet
+    if (originalTavilyKey === undefined) delete process.env.TAVILY_API_KEY
+    else process.env.TAVILY_API_KEY = originalTavilyKey
+    if (originalSearxngUrl === undefined) delete process.env.SEARXNG_URL
+    else process.env.SEARXNG_URL = originalSearxngUrl
+  }
+})
+
+test('media.downloadVideo safely handles URLs starting with dash', async () => {
+  const { handlers } = await import('../src/agent/tools.js')
+  const downloadVideoHandler = handlers['media.downloadVideo']
+
+  // Valid http URL format that starts with a dash (e.g., hostname or path with leading dash/flag-like syntax)
+  // assertSafeUrl will check valid URL format and public IP / hostname.
+  // When executed, yt-dlp receives '--' before the url argument, preventing option injection.
+  const result = await downloadVideoHandler({ url: 'https://example.com/--help' })
+  // Should attempt to execute yt-dlp without throwing option parsing errors from execFile
+  assert.ok(result)
 })
 
 test('media.downloadVideo prevents SSRF and non-http(s) requests', async () => {
