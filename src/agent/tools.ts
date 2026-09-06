@@ -59,7 +59,7 @@ export function assertSafeUrl(urlString: string) {
     throw new Error('Access to private or local IP address is restricted')
   }
 }
-async function safeFile(p = '') { const resolved = path.resolve(root, p); if (resolved !== root && !resolved.startsWith(root + path.sep)) throw new Error('Path is outside the workspace'); return resolved }
+export async function safeFile(p = '') { const resolved = path.resolve(root, p); if (resolved !== root && !resolved.startsWith(root + path.sep)) throw new Error('Path is outside the workspace'); return resolved }
 export async function listFiles() { await fs.mkdir(root, { recursive: true }); return (await fs.readdir(root, { withFileTypes: true })).map(x => ({ name: x.name, type: x.isDirectory() ? 'directory' : 'file' })) }
 export async function readFile(p: string) { return await fs.readFile(await safeFile(p), 'utf8') }
 export async function writeFile(p: string, content: string) { const f = await safeFile(p); await fs.mkdir(path.dirname(f), { recursive: true }); await fs.writeFile(f, content, 'utf8'); return { path: p, bytes: Buffer.byteLength(content) } }
