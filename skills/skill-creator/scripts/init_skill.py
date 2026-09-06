@@ -107,18 +107,49 @@ EXAMPLE_SCRIPT = '''#!/usr/bin/env python3
 """
 Example helper script for {skill_name}
 
-This is a placeholder script that can be executed directly.
-Replace with actual implementation or delete if not needed.
+This is a template script that can be executed directly.
+Customize or replace with actual implementation, or delete if not needed.
 
 Example real scripts from other skills:
 - pdf/scripts/fill_fillable_fields.py - Fills PDF form fields
 - pdf/scripts/convert_pdf_to_images.py - Converts PDF pages to images
 """
 
+import argparse
+import sys
+
+
+def process_data(input_path=None, verbose=False):
+    """
+    Example processing logic for {skill_name}.
+    Replace this with your skill's domain logic (e.g., file transformation, API calls).
+    """
+    if verbose:
+        print("[INFO] Processing input for {skill_name}...")
+
+    if input_path:
+        print(f"Processing file: {{input_path}}")
+    else:
+        print("Executing default operation for {skill_name}.")
+
+    return True
+
+
 def main():
-    print("This is an example script for {skill_name}")
-    # TODO: Add actual script logic here
-    # This could be data processing, file conversion, API calls, etc.
+    parser = argparse.ArgumentParser(description="Helper script for {skill_name}")
+    parser.add_argument("-i", "--input", help="Path to input file", default=None)
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
+
+    args = parser.parse_args()
+
+    success = process_data(input_path=args.input, verbose=args.verbose)
+    if success:
+        print("Operation completed successfully.")
+        sys.exit(0)
+    else:
+        print("Operation failed.", file=sys.stderr)
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
