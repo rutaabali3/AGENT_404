@@ -38,13 +38,26 @@ test('web.fetch prevents SSRF and non-http(s) requests', async () => {
     'http://169.254.169.254/latest/meta-data/',
     'http://10.0.0.1/internal',
     'http://172.16.0.1/private',
-    'http://192.168.1.1/router'
+    'http://192.168.1.1/router',
+    'http://0/test',
+    'http://0.0.0.0/test',
+    'http://2130706433/test',
+    'http://[::ffff:127.0.0.1]/test',
+    'http://[fc00::1]/test',
+    'http://[fd00::1]/test'
   ]
 
   for (const url of blockedUrls) {
     await assert.rejects(async () => {
       await fetchHandler({ url })
     })
+  }
+
+  // Ensure public domains starting with fc/fd or standard hostnames are allowed by assertSafeUrl logic
+  const { assertSafeUrl } = await import('../src/agent/tools.js') as any
+  if (typeof assertSafeUrl === 'function') {
+    assert.doesNotThrow(() => assertSafeUrl('https://fc2.com'))
+    assert.doesNotThrow(() => assertSafeUrl('https://fda.gov'))
   }
 })
 

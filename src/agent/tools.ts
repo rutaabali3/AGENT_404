@@ -8,7 +8,7 @@ import { convertToPdf, generateDocx, generateXlsx, generatePptx } from './genera
 const exec = promisify(execFile)
 const root = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
 
-function assertSafeUrl(urlString: string) {
+export function assertSafeUrl(urlString: string) {
   let parsed: URL
   try {
     parsed = new URL(urlString)
@@ -23,14 +23,22 @@ function assertSafeUrl(urlString: string) {
     hostname === 'localhost' ||
     hostname.endsWith('.localhost') ||
     hostname.endsWith('.local') ||
-    hostname.endsWith('.internal') ||
-    hostname === '::1' ||
-    hostname === '::' ||
-    hostname === '0.0.0.0' ||
-    hostname.startsWith('fe80:') ||
-    hostname.startsWith('::ffff:')
+    hostname.endsWith('.internal')
   ) {
     throw new Error('Access to local or internal network host is restricted')
+  }
+  if (hostname.includes(':')) {
+    if (
+      hostname === '::1' ||
+      hostname === '::' ||
+      hostname === '0.0.0.0' ||
+      hostname.startsWith('fe80:') ||
+      hostname.startsWith('fc') ||
+      hostname.startsWith('fd') ||
+      hostname.startsWith('::ffff:')
+    ) {
+      throw new Error('Access to local or internal network host is restricted')
+    }
   }
   // Check IPv4 addresses
   const ipv4Match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname)
@@ -46,6 +54,9 @@ function assertSafeUrl(urlString: string) {
     ) {
       throw new Error('Access to private or local IP address is restricted')
     }
+  }
+  if (hostname === '0' || /^0x[0-9a-f]+$/i.test(hostname) || /^\d+$/.test(hostname)) {
+    throw new Error('Access to private or local IP address is restricted')
   }
 }
 async function safeFile(p = '') { const resolved = path.resolve(root, p); if (resolved !== root && !resolved.startsWith(root + path.sep)) throw new Error('Path is outside the workspace'); return resolved }
