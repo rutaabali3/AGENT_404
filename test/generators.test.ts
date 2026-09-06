@@ -83,6 +83,53 @@ test('web.fetch prevents SSRF and non-http(s) requests', async () => {
   }
 })
 
+test('web.searchTavily and web.searchSearxng fallback send request with 10s timeout', async () => {
+  const axios = (await import('axios')).default
+  const { handlers } = await import('../src/agent/tools.js')
+
+  const originalPost = axios.post
+  const originalGet = axios.get
+  const originalTavilyKey = process.env.TAVILY_API_KEY
+  const originalSearxngUrl = process.env.SEARXNG_URL
+
+  const calls: { url: string; config?: any }[] = []
+
+  axios.post = (async (url: string, body?: any, config?: any) => {
+    calls.push({ url, config })
+    return { data: { results: ['test'] } }
+  }) as any
+
+  axios.get = (async (url: string, config?: any) => {
+    throw new Error('SearXNG connection failed')
+  }) as any
+
+  try {
+    process.env.TAVILY_API_KEY = 'test-key'
+
+    // Test web.searchTavily
+    const tavilyRes = await handlers['web.searchTavily']({ query: 'test query' })
+    assert.deepEqual(tavilyRes, { results: ['test'] })
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].url, 'https://api.tavily.com/search')
+    assert.equal(calls[0].config?.timeout, 10000)
+
+    // Test web.searchSearxng fallback to Tavily
+    calls.length = 0
+    const searxngRes = await handlers['web.searchSearxng']({ query: 'test query' })
+    assert.equal(searxngRes.provider, 'tavily-fallback')
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].url, 'https://api.tavily.com/search')
+    assert.equal(calls[0].config?.timeout, 10000)
+  } finally {
+    axios.post = originalPost
+    axios.get = originalGet
+    if (originalTavilyKey === undefined) delete process.env.TAVILY_API_KEY
+    else process.env.TAVILY_API_KEY = originalTavilyKey
+    if (originalSearxngUrl === undefined) delete process.env.SEARXNG_URL
+    else process.env.SEARXNG_URL = originalSearxngUrl
+  }
+})
+
 test('media.downloadVideo prevents SSRF and non-http(s) requests', async () => {
   const { handlers } = await import('../src/agent/tools.js')
   const downloadVideoHandler = handlers['media.downloadVideo']
