@@ -94,14 +94,21 @@ export async function listSkillCatalog() {
   const cached = metadataCache.get('catalog')
   if (cached) return cached
   const entries = await fs.readdir(skillsRoot, { withFileTypes: true })
-  const catalog: { name: string; description: string; skill: string }[] = []
-  for (const entry of entries.filter(item => item.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
-    try {
-      const text = await readCached(path.join(skillsRoot, entry.name, 'SKILL.md'))
-      const meta = frontmatter(text)
-      catalog.push({ name: meta.name || entry.name, description: meta.description || 'Local agent skill', skill: entry.name })
-    } catch { /* ignore incomplete directories */ }
-  }
+  const directories = entries.filter(item => item.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))
+
+  const results = await Promise.all(
+    directories.map(async entry => {
+      try {
+        const text = await readCached(path.join(skillsRoot, entry.name, 'SKILL.md'))
+        const meta = frontmatter(text)
+        return { name: meta.name || entry.name, description: meta.description || 'Local agent skill', skill: entry.name }
+      } catch {
+        return null
+      }
+    })
+  )
+
+  const catalog = results.filter((item): item is { name: string; description: string; skill: string } => item !== null)
   metadataCache.set('catalog', catalog)
   return catalog
 }
