@@ -10,6 +10,10 @@ const store = new Store()
 app.use(express.json({ limit: '2mb' }))
 app.use(express.static(path.resolve('public')))
 
+import { requireApiKey } from './agent/auth.js'
+
+export { requireApiKey }
+
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
@@ -18,6 +22,8 @@ app.get('/api/health', (_req, res) => {
     rules: true
   })
 })
+
+app.use('/api', requireApiKey)
 
 app.get('/api/tools', async (_req, res) => {
   res.json(await store.tools())
