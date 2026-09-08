@@ -39,6 +39,28 @@ test('requireApiKey allows request when LOCAL_AGENT_API_KEY is not set', () => {
   }
 })
 
+test('requireApiKey rejects request with 401 when key prefix matches but length differs', () => {
+  const originalEnv = process.env.LOCAL_AGENT_API_KEY
+  process.env.LOCAL_AGENT_API_KEY = 'secret-key-123'
+
+  try {
+    let nextCalled = false
+    const { req, res, getStatus, getJson } = createMockReqRes({ 'x-api-key': 'secret-key-12' })
+    requireApiKey(req, res, () => {
+      nextCalled = true
+    })
+    assert.equal(nextCalled, false)
+    assert.equal(getStatus(), 401)
+    assert.deepEqual(getJson(), { error: 'Unauthorized' })
+  } finally {
+    if (originalEnv !== undefined) {
+      process.env.LOCAL_AGENT_API_KEY = originalEnv
+    } else {
+      delete process.env.LOCAL_AGENT_API_KEY
+    }
+  }
+})
+
 test('requireApiKey rejects request with 401 when LOCAL_AGENT_API_KEY is set and no key provided', () => {
   const originalEnv = process.env.LOCAL_AGENT_API_KEY
   process.env.LOCAL_AGENT_API_KEY = 'secret-key-123'
