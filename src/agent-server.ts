@@ -7,12 +7,13 @@ import { handleChatRequest } from './agent/chat.js'
 const app = express()
 const store = new Store()
 
+import { requireApiKey, securityHeaders } from './agent/auth.js'
+
+app.use(securityHeaders)
 app.use(express.json({ limit: '2mb' }))
 app.use(express.static(path.resolve('public')))
 
-import { requireApiKey } from './agent/auth.js'
-
-export { requireApiKey }
+export { requireApiKey, securityHeaders }
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -31,7 +32,7 @@ app.get('/api/tools', async (_req, res) => {
 
 app.patch('/api/tools/:name', async (req, res) => {
   const name = req.params.name
-  const enabled = Boolean(req.body.enabled)
+  const enabled = Boolean(req.body?.enabled)
   res.json(await store.setTool(name, enabled))
 })
 

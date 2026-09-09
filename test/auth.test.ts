@@ -1,13 +1,18 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { requireApiKey } from '../src/agent/auth.js'
+import { requireApiKey, securityHeaders } from '../src/agent/auth.js'
 
 function createMockReqRes(headers: Record<string, string | undefined> = {}) {
   const req = { headers } as any
   let statusResult: number | undefined
   let jsonResult: any
+  const responseHeaders: Record<string, string> = {}
 
   const res = {
+    setHeader(name: string, value: string) {
+      responseHeaders[name.toLowerCase()] = value
+      return res
+    },
     status(code: number) {
       statusResult = code
       return res
@@ -18,8 +23,22 @@ function createMockReqRes(headers: Record<string, string | undefined> = {}) {
     }
   } as any
 
-  return { req, res, getStatus: () => statusResult, getJson: () => jsonResult }
+  return { req, res, responseHeaders, getStatus: () => statusResult, getJson: () => jsonResult }
 }
+
+test('securityHeaders sets expected HTTP security headers on responses', () => {
+  let nextCalled = false
+  const { req, res, responseHeaders } = createMockReqRes()
+  securityHeaders(req, res, () => {
+    nextCalled = true
+  })
+
+  assert.equal(nextCalled, true)
+  assert.equal(responseHeaders['x-content-type-options'], 'nosniff')
+  assert.equal(responseHeaders['x-frame-options'], 'DENY')
+  assert.equal(responseHeaders['x-xss-protection'], '0')
+  assert.equal(responseHeaders['referrer-policy'], 'strict-origin-when-cross-origin')
+})
 
 test('requireApiKey allows request when LOCAL_AGENT_API_KEY is not set', () => {
   const originalEnv = process.env.LOCAL_AGENT_API_KEY
