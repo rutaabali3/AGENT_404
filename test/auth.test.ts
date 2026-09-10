@@ -1,13 +1,18 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { requireApiKey } from '../src/agent/auth.js'
+import { requireApiKey, securityHeaders } from '../src/agent/auth.js'
 
 function createMockReqRes(headers: Record<string, string | undefined> = {}) {
   const req = { headers } as any
   let statusResult: number | undefined
   let jsonResult: any
+  const setHeaders: Record<string, string> = {}
 
   const res = {
+    setHeader(name: string, value: string) {
+      setHeaders[name] = value
+      return res
+    },
     status(code: number) {
       statusResult = code
       return res
@@ -18,8 +23,24 @@ function createMockReqRes(headers: Record<string, string | undefined> = {}) {
     }
   } as any
 
-  return { req, res, getStatus: () => statusResult, getJson: () => jsonResult }
+  return { req, res, getStatus: () => statusResult, getJson: () => jsonResult, getSetHeaders: () => setHeaders }
 }
+
+test('securityHeaders sets expected security headers and calls next', () => {
+  let nextCalled = false
+  const { req, res, getSetHeaders } = createMockReqRes()
+  securityHeaders(req, res, () => {
+    nextCalled = true
+  })
+
+  assert.equal(nextCalled, true)
+  assert.deepEqual(getSetHeaders(), {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'X-XSS-Protection': '0',
+    'Referrer-Policy': 'no-referrer'
+  })
+})
 
 test('requireApiKey allows request when LOCAL_AGENT_API_KEY is not set', () => {
   const originalEnv = process.env.LOCAL_AGENT_API_KEY
