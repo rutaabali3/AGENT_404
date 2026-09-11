@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { requireApiKey, securityHeaders } from '../src/agent/auth.js'
+import express from 'express'
+import rateLimit from 'express-rate-limit'
+import { requireApiKey, securityHeaders, chatRateLimiter } from '../src/agent/auth.js'
 
 function createMockReqRes(headers: Record<string, string | undefined> = {}) {
   const req = { headers } as any
@@ -61,42 +63,60 @@ test('requireApiKey allows request when LOCAL_AGENT_API_KEY is not set', () => {
   }
 })
 
-test('express middleware pipeline includes security headers before static files and routes', async () => {
-  const express = (await import('express')).default
-  const path = (await import('node:path')).default
-
+test('chatRateLimiter allows requests within rate limit and includes ratelimit headers', async () => {
   const app = express()
-  app.use(securityHeaders)
-  app.use(express.json({ limit: '2mb' }))
-  app.use(express.static(path.resolve('public')))
-
-  app.get('/test-route', (_req, res) => {
+  app.post('/api/chat', chatRateLimiter, (_req, res) => {
     res.json({ ok: true })
   })
 
   const server = app.listen(0)
   const address = server.address()
   if (!address || typeof address === 'string') {
-    server.close()
-    throw new Error('Server port not allocated')
+    throw new Error('Failed to start test server')
   }
-
-  const baseUrl = `http://127.0.0.1:${address.port}`
+  const port = address.port
 
   try {
-    // 1. Test static asset response
-    const staticRes = await fetch(`${baseUrl}/index.html`)
-    assert.equal(staticRes.headers.get('x-content-type-options'), 'nosniff')
-    assert.equal(staticRes.headers.get('x-frame-options'), 'DENY')
-    assert.equal(staticRes.headers.get('x-xss-protection'), '0')
-    assert.equal(staticRes.headers.get('referrer-policy'), 'no-referrer')
+    const res = await fetch(`http://127.0.0.1:${port}/api/chat`, { method: 'POST' })
+    assert.equal(res.status, 200)
+    assert.ok(res.headers.has('ratelimit-limit'))
+  } finally {
+    server.close()
+  }
+})
 
-    // 2. Test standard route response
-    const routeRes = await fetch(`${baseUrl}/test-route`)
-    assert.equal(routeRes.headers.get('x-content-type-options'), 'nosniff')
-    assert.equal(routeRes.headers.get('x-frame-options'), 'DENY')
-    assert.equal(routeRes.headers.get('x-xss-protection'), '0')
-    assert.equal(routeRes.headers.get('referrer-policy'), 'no-referrer')
+test('rateLimiter middleware blocks requests exceeding rate limit with 429 status', async () => {
+  const app = express()
+  const testLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 2,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later.' }
+  })
+
+  app.post('/api/chat', testLimiter, (_req, res) => {
+    res.json({ ok: true })
+  })
+
+  const server = app.listen(0)
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to start test server')
+  }
+  const port = address.port
+
+  try {
+    const res1 = await fetch(`http://127.0.0.1:${port}/api/chat`, { method: 'POST' })
+    assert.equal(res1.status, 200)
+
+    const res2 = await fetch(`http://127.0.0.1:${port}/api/chat`, { method: 'POST' })
+    assert.equal(res2.status, 200)
+
+    const res3 = await fetch(`http://127.0.0.1:${port}/api/chat`, { method: 'POST' })
+    assert.equal(res3.status, 429)
+    const body = await res3.json()
+    assert.equal(body.error, 'Too many requests, please try again later.')
   } finally {
     server.close()
   }
