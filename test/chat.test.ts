@@ -64,6 +64,47 @@ test('executeToolCall runs registered tool and logs tool call', async () => {
   assert.equal(result.toolMessage.tool_call_id, 'call_123')
 })
 
+test('executeToolCall rejects invalid tool arguments schema', async () => {
+  const store = new Store()
+  const enabledTools: ToolDoc[] = [
+    {
+      name: 'read_file',
+      description: 'Read a file',
+      category: 'filesystem',
+      enabled: true,
+      requires_sandbox: false,
+      parameters: {
+        type: 'object',
+        properties: { path: { type: 'string' } },
+        required: ['path']
+      },
+      handler: 'filesystem.read'
+    }
+  ]
+
+  const callWithMissingArgs = {
+    id: 'call_456',
+    function: {
+      name: 'read_file',
+      arguments: '{}'
+    }
+  }
+
+  const result1 = await executeToolCall(callWithMissingArgs, enabledTools, store)
+  assert.match(result1.step.result.error, /Invalid arguments for tool read_file/)
+
+  const callWithWrongType = {
+    id: 'call_789',
+    function: {
+      name: 'read_file',
+      arguments: '{"path": 123}'
+    }
+  }
+
+  const result2 = await executeToolCall(callWithWrongType, enabledTools, store)
+  assert.match(result2.step.result.error, /Invalid arguments for tool read_file/)
+})
+
 test('handleChatRequest returns 400 when message is empty', async () => {
   const store = new Store()
   const res = await handleChatRequest({ message: '   ' }, store)
