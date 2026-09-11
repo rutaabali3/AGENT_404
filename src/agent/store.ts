@@ -18,7 +18,46 @@ export const defaultTools: ToolDoc[] = [
   { name: 'web_search_searxng', description: 'Search the web through a local SearXNG instance.', category: 'web', enabled: true, requires_sandbox: false, parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] }, handler: 'web.searchSearxng' },
   { name: 'web_search_tavily', description: 'Search the web using Tavily as a fallback.', category: 'web', enabled: false, requires_sandbox: false, parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] }, handler: 'web.searchTavily' },
   { name: 'web_fetch', description: 'Fetch readable text from a public web page.', category: 'web', enabled: true, requires_sandbox: false, parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] }, handler: 'web.fetch' },
-  ...(['screenshot_url','text_to_speech','image_vision','image_generate','drive_upload','download_video','download_video_ahm7','temp_email','wiki_to_pdf','audio_transcribe','certificate_generate','text_to_handwriting','manga_reader','novel_reader','urdu_novel','movies','telenor_quiz','n8n_workflow_explorer'].map(name => ({ name, description: `AHM7 integration: ${name}.`, category: 'media', enabled: ['screenshot_url','text_to_speech','image_vision','image_generate','drive_upload','download_video'].includes(name), requires_sandbox: false, parameters: { type: 'object', properties: { input: { type: 'string' } } }, handler: name === 'download_video' ? 'media.downloadVideo' : `ahm7.${name}` })))
+  ...[
+    'screenshot_url',
+    'text_to_speech',
+    'image_vision',
+    'image_generate',
+    'drive_upload',
+    'download_video',
+    'download_video_ahm7',
+    'temp_email',
+    'wiki_to_pdf',
+    'audio_transcribe',
+    'certificate_generate',
+    'text_to_handwriting',
+    'manga_reader',
+    'novel_reader',
+    'urdu_novel',
+    'movies',
+    'telenor_quiz',
+    'n8n_workflow_explorer'
+  ].map(name => ({
+    name,
+    description: `AHM7 integration: ${name}.`,
+    category: 'media',
+    enabled: [
+      'screenshot_url',
+      'text_to_speech',
+      'image_vision',
+      'image_generate',
+      'drive_upload',
+      'download_video'
+    ].includes(name),
+    requires_sandbox: false,
+    parameters: {
+      type: 'object',
+      properties: {
+        input: { type: 'string' }
+      }
+    },
+    handler: name === 'download_video' ? 'media.downloadVideo' : `ahm7.${name}`
+  }))
 ]
 
 const defaultToolBulkTemplates = defaultTools.map(tool => ({
