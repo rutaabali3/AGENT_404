@@ -86,3 +86,31 @@ test('handleChatRequest returns unconfigured message when DEEPSEEK_API_KEY is no
     }
   }
 })
+
+test('handleChatRequest returns 500 status when DeepSeek API returns non-ok response', async () => {
+  const store = new Store()
+  const originalKey = process.env.DEEPSEEK_API_KEY
+  const originalFetch = globalThis.fetch
+  process.env.DEEPSEEK_API_KEY = 'test-key'
+
+  try {
+    globalThis.fetch = async () => {
+      return new Response('Internal Server Error', {
+        status: 500,
+        statusText: 'Internal Server Error'
+      })
+    }
+
+    const res = await handleChatRequest({ message: 'hello' }, store)
+    assert.equal(res.status, 500)
+    assert.equal(res.body.error, 'DeepSeek HTTP 500: Internal Server Error')
+    assert.deepEqual(res.body.steps, [])
+  } finally {
+    globalThis.fetch = originalFetch
+    if (originalKey !== undefined) {
+      process.env.DEEPSEEK_API_KEY = originalKey
+    } else {
+      delete process.env.DEEPSEEK_API_KEY
+    }
+  }
+})
