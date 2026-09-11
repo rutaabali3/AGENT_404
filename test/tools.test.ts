@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { runTool, toolSchemas, handlers } from '../src/agent/tools.js'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { runTool, toolSchemas, handlers, writeFile, readFile } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
 
 test('runTool throws error when tool is disabled', async () => {
@@ -120,4 +122,93 @@ test('toolSchemas filters disabled tools and maps enabled tools to OpenAI/DeepSe
       parameters: { type: 'object', properties: { p1: { type: 'string' } } }
     }
   })
+})
+
+test('writeFile writes file content and returns path and byte count', async () => {
+  const filePath = 'test-write-single.txt'
+  const content = 'Hello, World! 🚀'
+  const expectedBytes = Buffer.byteLength(content, 'utf8')
+
+  try {
+    const result = await writeFile(filePath, content)
+    assert.deepEqual(result, { path: filePath, bytes: expectedBytes })
+
+    const readBack = await readFile(filePath)
+    assert.equal(readBack, content)
+  } finally {
+    const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
+    await fs.rm(path.resolve(workspaceDir, filePath), { force: true })
+  }
+})
+
+test('writeFile creates parent directories recursively when they do not exist', async () => {
+  const filePath = 'nested/sub/dir/test-write-nested.txt'
+  const content = 'Nested directory test content'
+
+  try {
+    const result = await writeFile(filePath, content)
+    assert.deepEqual(result, { path: filePath, bytes: Buffer.byteLength(content) })
+
+    const readBack = await readFile(filePath)
+    assert.equal(readBack, content)
+  } finally {
+    const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
+    await fs.rm(path.resolve(workspaceDir, 'nested'), { recursive: true, force: true })
+  }
+})
+
+test('writeFile overwrites existing file content', async () => {
+  const filePath = 'test-overwrite.txt'
+  const initialContent = 'Initial content'
+  const newContent = 'Updated content with new information'
+
+  try {
+    await writeFile(filePath, initialContent)
+    assert.equal(await readFile(filePath), initialContent)
+
+    const result = await writeFile(filePath, newContent)
+    assert.deepEqual(result, { path: filePath, bytes: Buffer.byteLength(newContent) })
+    assert.equal(await readFile(filePath), newContent)
+  } finally {
+    const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
+    await fs.rm(path.resolve(workspaceDir, filePath), { force: true })
+  }
+})
+
+test('writeFile throws error on path traversal outside workspace', async () => {
+  await assert.rejects(
+    async () => {
+      await writeFile('../outside-workspace.txt', 'forbidden')
+    },
+    {
+      name: 'Error',
+      message: 'Path is outside the workspace'
+    }
+  )
+
+  await assert.rejects(
+    async () => {
+      await writeFile('/etc/passwd', 'forbidden')
+    },
+    {
+      name: 'Error',
+      message: 'Path is outside the workspace'
+    }
+  )
+})
+
+test('handlers["filesystem.write"] delegates to writeFile and works with filesystem.read', async () => {
+  const filePath = 'test-handler-write.txt'
+  const content = 'Tool handler test content'
+
+  try {
+    const writeResult = await handlers['filesystem.write']({ path: filePath, content })
+    assert.deepEqual(writeResult, { path: filePath, bytes: Buffer.byteLength(content) })
+
+    const readResult = await handlers['filesystem.read']({ path: filePath })
+    assert.equal(readResult, content)
+  } finally {
+    const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
+    await fs.rm(path.resolve(workspaceDir, filePath), { force: true })
+  }
 })
