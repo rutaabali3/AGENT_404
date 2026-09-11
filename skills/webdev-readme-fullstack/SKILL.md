@@ -402,7 +402,7 @@ Note: All TODO comments are remarks for the agent (you), not for the user.
 
 `drizzle/schema.ts`
 ```ts
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { boolean, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -429,7 +429,21 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+/**
+ * Example application table.
+ * Replace or extend this table based on your application needs.
+ */
+export const items = mysqlTable("items", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  completed: boolean("completed").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Item = typeof items.$inferSelect;
+export type InsertItem = typeof items.$inferInsert;
 ```
 
 `server/db.ts`
@@ -525,7 +539,24 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function getUserById(id: number) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot get user: database not available");
+    return undefined;
+  }
+
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+
+  return result.length > 0 ? result[0] : undefined;
+}
+
+// Example feature query helpers for additional schema tables:
+// export async function getUserTodos(userId: number) {
+//   const db = await getDb();
+//   if (!db) return [];
+//   return db.select().from(todos).where(eq(todos.userId, userId));
+// }
 ```
 
 `server/routers.ts`
@@ -550,9 +581,10 @@ export const appRouter = router({
     }),
   }),
 
-  // Add feature routers here
   todo: router({
-    list: protectedProcedure.query(({ ctx }) => db.getUserTodos(ctx.user.id)),
+    list: protectedProcedure.query(({ ctx }) =>
+      db.getUserTodos(ctx.user.id)
+    ),
   }),
 });
 
