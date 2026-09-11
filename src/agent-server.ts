@@ -3,18 +3,16 @@ import express from 'express'
 import path from 'node:path'
 import { Store } from './agent/store.js'
 import { handleChatRequest } from './agent/chat.js'
-
-const app = express()
-const store = new Store()
-
-app.use(express.json({ limit: '2mb' }))
-app.use(express.static(path.resolve('public')))
-
 import { requireApiKey, securityHeaders } from './agent/auth.js'
 
 export { requireApiKey, securityHeaders }
 
+const app = express()
+const store = new Store()
+
 app.use(securityHeaders)
+app.use(express.json({ limit: '2mb' }))
+app.use(express.static(path.resolve('public')))
 
 app.get('/api/health', (_req, res) => {
   res.json({

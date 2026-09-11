@@ -61,6 +61,47 @@ test('requireApiKey allows request when LOCAL_AGENT_API_KEY is not set', () => {
   }
 })
 
+test('express middleware pipeline includes security headers before static files and routes', async () => {
+  const express = (await import('express')).default
+  const path = (await import('node:path')).default
+
+  const app = express()
+  app.use(securityHeaders)
+  app.use(express.json({ limit: '2mb' }))
+  app.use(express.static(path.resolve('public')))
+
+  app.get('/test-route', (_req, res) => {
+    res.json({ ok: true })
+  })
+
+  const server = app.listen(0)
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    server.close()
+    throw new Error('Server port not allocated')
+  }
+
+  const baseUrl = `http://127.0.0.1:${address.port}`
+
+  try {
+    // 1. Test static asset response
+    const staticRes = await fetch(`${baseUrl}/index.html`)
+    assert.equal(staticRes.headers.get('x-content-type-options'), 'nosniff')
+    assert.equal(staticRes.headers.get('x-frame-options'), 'DENY')
+    assert.equal(staticRes.headers.get('x-xss-protection'), '0')
+    assert.equal(staticRes.headers.get('referrer-policy'), 'no-referrer')
+
+    // 2. Test standard route response
+    const routeRes = await fetch(`${baseUrl}/test-route`)
+    assert.equal(routeRes.headers.get('x-content-type-options'), 'nosniff')
+    assert.equal(routeRes.headers.get('x-frame-options'), 'DENY')
+    assert.equal(routeRes.headers.get('x-xss-protection'), '0')
+    assert.equal(routeRes.headers.get('referrer-policy'), 'no-referrer')
+  } finally {
+    server.close()
+  }
+})
+
 test('requireApiKey rejects request with 401 when key prefix matches but length differs', () => {
   const originalEnv = process.env.LOCAL_AGENT_API_KEY
   process.env.LOCAL_AGENT_API_KEY = 'secret-key-123'
