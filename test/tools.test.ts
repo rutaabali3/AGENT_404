@@ -1,7 +1,59 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { runTool, toolSchemas, handlers } from '../src/agent/tools.js'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { listFiles, runTool, toolSchemas, handlers } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
+
+const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
+
+test('listFiles creates workspace directory if missing and returns empty array when empty', async () => {
+  await fs.rm(workspaceDir, { recursive: true, force: true })
+
+  try {
+    const result = await listFiles()
+    assert.deepEqual(result, [])
+
+    const stat = await fs.stat(workspaceDir)
+    assert.ok(stat.isDirectory())
+  } finally {
+    await fs.rm(workspaceDir, { recursive: true, force: true })
+  }
+})
+
+test('listFiles and filesystem.list handler return files and directories with correct types', async () => {
+  await fs.rm(workspaceDir, { recursive: true, force: true })
+  await fs.mkdir(workspaceDir, { recursive: true })
+
+  const testFilePath = path.join(workspaceDir, 'sample.txt')
+  const testSubdirPath = path.join(workspaceDir, 'subfolder')
+
+  try {
+    await fs.writeFile(testFilePath, 'hello world', 'utf8')
+    await fs.mkdir(testSubdirPath, { recursive: true })
+
+    const files = await listFiles()
+    assert.equal(files.length, 2)
+    assert.deepEqual(
+      files.sort((a, b) => a.name.localeCompare(b.name)),
+      [
+        { name: 'sample.txt', type: 'file' },
+        { name: 'subfolder', type: 'directory' }
+      ]
+    )
+
+    const handlerResult = await handlers['filesystem.list']({})
+    assert.deepEqual(
+      handlerResult.sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name)),
+      [
+        { name: 'sample.txt', type: 'file' },
+        { name: 'subfolder', type: 'directory' }
+      ]
+    )
+  } finally {
+    await fs.rm(workspaceDir, { recursive: true, force: true })
+  }
+})
 
 test('runTool throws error when tool is disabled', async () => {
   const disabledTool: ToolDoc = {
