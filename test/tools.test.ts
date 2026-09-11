@@ -6,25 +6,63 @@ import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agen
 import { ToolDoc } from '../src/agent/store.js'
 
 test('runTool throws error when tool is disabled', async () => {
-  const disabledTool: ToolDoc = {
-    name: 'disabled_tool',
-    description: 'A disabled tool',
-    category: 'test',
-    enabled: false,
-    requires_sandbox: false,
-    parameters: {},
-    handler: 'test.disabled'
+  const handlerName = 'test.disabledHandler'
+  handlers[handlerName] = async () => 'should not run'
+
+  try {
+    const disabledTool: ToolDoc = {
+      name: 'disabled_tool',
+      description: 'A disabled tool',
+      category: 'test',
+      enabled: false,
+      requires_sandbox: false,
+      parameters: {},
+      handler: handlerName
+    }
+
+    await assert.rejects(
+      async () => {
+        await runTool(disabledTool, {})
+      },
+      {
+        name: 'Error',
+        message: 'Tool disabled_tool is disabled'
+      }
+    )
+  } finally {
+    delete handlers[handlerName]
+  }
+})
+
+test('runTool propagates errors thrown by tool handlers', async () => {
+  const handlerName = 'test.failingHandler'
+  handlers[handlerName] = async () => {
+    throw new Error('Handler execution failed')
   }
 
-  await assert.rejects(
-    async () => {
-      await runTool(disabledTool, {})
-    },
-    {
-      name: 'Error',
-      message: 'Tool disabled_tool is disabled'
+  try {
+    const failingTool: ToolDoc = {
+      name: 'failing_tool',
+      description: 'Tool whose handler fails',
+      category: 'test',
+      enabled: true,
+      requires_sandbox: false,
+      parameters: {},
+      handler: handlerName
     }
-  )
+
+    await assert.rejects(
+      async () => {
+        await runTool(failingTool, {})
+      },
+      {
+        name: 'Error',
+        message: 'Handler execution failed'
+      }
+    )
+  } finally {
+    delete handlers[handlerName]
+  }
 })
 
 test('readFile rejects path traversal outside the workspace', async () => {
