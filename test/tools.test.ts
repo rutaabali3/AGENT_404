@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { runTool, toolSchemas, handlers } from '../src/agent/tools.js'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
 
 test('runTool throws error when tool is disabled', async () => {
@@ -21,6 +23,28 @@ test('runTool throws error when tool is disabled', async () => {
     {
       name: 'Error',
       message: 'Tool disabled_tool is disabled'
+    }
+  )
+})
+
+test('readFile rejects path traversal outside the workspace', async () => {
+  await assert.rejects(
+    async () => {
+      await readFile('../outside.txt')
+    },
+    {
+      name: 'Error',
+      message: 'Path is outside the workspace'
+    }
+  )
+
+  await assert.rejects(
+    async () => {
+      await readFile('/etc/passwd')
+    },
+    {
+      name: 'Error',
+      message: 'Path is outside the workspace'
     }
   )
 })
@@ -86,6 +110,36 @@ test('runTool executes default registered AHM7 handler fallback', async () => {
   assert.deepEqual(result, {
     error: 'AHM7 integration is registered but not configured in this local build.'
   })
+})
+
+test('readFile and filesystem.read handler read valid workspace files correctly', async () => {
+  const fileName = `test-read-${Date.now()}.txt`
+  const content = 'Hello, unit test content!'
+
+  await writeFile(fileName, content)
+
+  try {
+    const directResult = await readFile(fileName)
+    assert.equal(directResult, content)
+
+    const handlerResult = await handlers['filesystem.read']({ path: fileName })
+    assert.equal(handlerResult, content)
+  } finally {
+    const workspaceRoot = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
+    await fs.rm(path.join(workspaceRoot, fileName), { force: true })
+  }
+})
+
+test('readFile rejects non-existent files with ENOENT error', async () => {
+  const nonExistentFile = `nonexistent-${Date.now()}-${Math.random().toString(16).slice(2)}.txt`
+  await assert.rejects(
+    async () => {
+      await readFile(nonExistentFile)
+    },
+    (err: any) => {
+      return err.code === 'ENOENT'
+    }
+  )
 })
 
 test('toolSchemas filters disabled tools and maps enabled tools to OpenAI/DeepSeek function format', () => {
