@@ -30,3 +30,27 @@ test('loadRules and loadRelevantSkills return expected content', async () => {
   const relevant = await loadRelevantSkills('generate pdf document')
   assert.ok(typeof relevant === 'string' && relevant.includes('pdf'))
 })
+
+test('benchmark loadRelevantSkills matching loop performance', async () => {
+  const requests = [
+    'I need to schedule a recurring job with docker and python script',
+    'Generate a pdf document with custom typst template and excel sheet',
+    'Deploy web app with llm integration, static website, and image generation',
+    'Transcribe audio voiceover with whisper and text to speech'
+  ]
+
+  // Warmup
+  for (let i = 0; i < 1000; i++) {
+    await loadRelevantSkills(requests[i % requests.length])
+  }
+
+  const start = performance.now()
+  const iterations = 100000
+  for (let i = 0; i < iterations; i++) {
+    await loadRelevantSkills(requests[i % requests.length])
+  }
+  const end = performance.now()
+  const duration = end - start
+
+  console.log(`[Benchmark] loadRelevantSkills ${iterations} iterations took ${duration.toFixed(2)} ms (${(duration / iterations * 1000).toFixed(3)} µs/op)`)
+})
