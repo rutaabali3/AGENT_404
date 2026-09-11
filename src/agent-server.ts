@@ -6,7 +6,7 @@ import { Store } from './agent/store.js'
 import { handleChatRequest } from './agent/chat.js'
 import { requireApiKey, securityHeaders } from './agent/auth.js'
 
-export { requireApiKey, securityHeaders }
+export { requireApiKey, securityHeaders, chatRateLimiter }
 
 export function createApp(store: Store = new Store()) {
   const app = express()
