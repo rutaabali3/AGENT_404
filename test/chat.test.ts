@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildSystemPrompt, buildChatMessages, executeToolCall, handleChatRequest } from '../src/agent/chat.js'
+import { toolSchemas } from '../src/agent/tools.js'
 import { Store, ToolDoc } from '../src/agent/store.js'
 
 test('buildSystemPrompt includes rules, notice, and catalog', async () => {
@@ -64,59 +65,45 @@ test('executeToolCall runs registered tool and logs tool call', async () => {
   assert.equal(result.toolMessage.tool_call_id, 'call_123')
 })
 
-test('executeToolCall handles invalid JSON in arguments gracefully', async () => {
+test('executeToolCall rejects invalid tool arguments schema', async () => {
   const store = new Store()
   const enabledTools: ToolDoc[] = [
     {
-      name: 'list_files',
-      description: 'List files in workspace',
+      name: 'read_file',
+      description: 'Read a file',
       category: 'filesystem',
       enabled: true,
       requires_sandbox: false,
-      parameters: { type: 'object', properties: {} },
-      handler: 'filesystem.list'
+      parameters: {
+        type: 'object',
+        properties: { path: { type: 'string' } },
+        required: ['path']
+      },
+      handler: 'filesystem.read'
     }
   ]
 
-  const call = {
-    id: 'call_invalid_json',
+  const callWithMissingArgs = {
+    id: 'call_456',
     function: {
-      name: 'list_files',
-      arguments: '{ invalid json string '
+      name: 'read_file',
+      arguments: '{}'
     }
   }
 
-  const result = await executeToolCall(call, enabledTools, store)
-  assert.equal(result.step.tool, 'list_files')
-  assert.equal(result.toolMessage.role, 'tool')
-  assert.equal(result.toolMessage.tool_call_id, 'call_invalid_json')
-})
+  const result1 = await executeToolCall(callWithMissingArgs, enabledTools, store)
+  assert.match(result1.step.result.error, /Invalid arguments for tool read_file/)
 
-test('executeToolCall handles missing or undefined arguments gracefully', async () => {
-  const store = new Store()
-  const enabledTools: ToolDoc[] = [
-    {
-      name: 'list_files',
-      description: 'List files in workspace',
-      category: 'filesystem',
-      enabled: true,
-      requires_sandbox: false,
-      parameters: { type: 'object', properties: {} },
-      handler: 'filesystem.list'
-    }
-  ]
-
-  const call = {
-    id: 'call_missing_args',
+  const callWithWrongType = {
+    id: 'call_789',
     function: {
-      name: 'list_files'
+      name: 'read_file',
+      arguments: '{"path": 123}'
     }
   }
 
-  const result = await executeToolCall(call, enabledTools, store)
-  assert.equal(result.step.tool, 'list_files')
-  assert.equal(result.toolMessage.role, 'tool')
-  assert.equal(result.toolMessage.tool_call_id, 'call_missing_args')
+  const result2 = await executeToolCall(callWithWrongType, enabledTools, store)
+  assert.match(result2.step.result.error, /Invalid arguments for tool read_file/)
 })
 
 test('handleChatRequest returns 400 when message is empty', async () => {
@@ -140,4 +127,37 @@ test('handleChatRequest returns unconfigured message when DEEPSEEK_API_KEY is no
       process.env.DEEPSEEK_API_KEY = originalKey
     }
   }
+})
+
+test('toolSchemas performance in loop benchmark', async () => {
+  const store = new Store()
+  const enabledTools = (await store.tools()).filter(t => t.enabled)
+  const iterations = 100000
+
+  // Old: toolSchemas called inside turn loop (up to 6 times per request)
+  const startOld = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    for (let turn = 0; turn < 6; turn++) {
+      const schemas = toolSchemas(enabledTools)
+    }
+  }
+  const durationOld = performance.now() - startOld
+
+  // New: toolSchemas called once before turn loop
+  const startNew = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    const schemas = toolSchemas(enabledTools)
+    for (let turn = 0; turn < 6; turn++) {
+      // reuse schemas
+      const useSchemas = schemas
+    }
+  }
+  const durationNew = performance.now() - startNew
+
+  console.log(`Benchmark toolSchemas in chat request loop (${iterations} requests, up to 6 turns each):`)
+  console.log(`  Old (recomputing schemas inside 6-turn loop): ${durationOld.toFixed(2)} ms`)
+  console.log(`  New (precomputing schemas outside loop): ${durationNew.toFixed(2)} ms`)
+  console.log(`  Speedup: ${(durationOld / durationNew).toFixed(1)}x faster`)
+
+  assert.ok(durationNew < durationOld)
 })

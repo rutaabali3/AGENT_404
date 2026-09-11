@@ -18,13 +18,72 @@ export const defaultTools: ToolDoc[] = [
   { name: 'web_search_searxng', description: 'Search the web through a local SearXNG instance.', category: 'web', enabled: true, requires_sandbox: false, parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] }, handler: 'web.searchSearxng' },
   { name: 'web_search_tavily', description: 'Search the web using Tavily as a fallback.', category: 'web', enabled: false, requires_sandbox: false, parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] }, handler: 'web.searchTavily' },
   { name: 'web_fetch', description: 'Fetch readable text from a public web page.', category: 'web', enabled: true, requires_sandbox: false, parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] }, handler: 'web.fetch' },
-  ...(['screenshot_url','text_to_speech','image_vision','image_generate','drive_upload','download_video','download_video_ahm7','temp_email','wiki_to_pdf','audio_transcribe','certificate_generate','text_to_handwriting','manga_reader','novel_reader','urdu_novel','movies','telenor_quiz','n8n_workflow_explorer'].map(name => ({ name, description: `AHM7 integration: ${name}.`, category: 'media', enabled: ['screenshot_url','text_to_speech','image_vision','image_generate','drive_upload','download_video'].includes(name), requires_sandbox: false, parameters: { type: 'object', properties: { input: { type: 'string' } } }, handler: name === 'download_video' ? 'media.downloadVideo' : `ahm7.${name}` })))
+  ...[
+    'screenshot_url',
+    'text_to_speech',
+    'image_vision',
+    'image_generate',
+    'drive_upload',
+    'download_video',
+    'download_video_ahm7',
+    'temp_email',
+    'wiki_to_pdf',
+    'audio_transcribe',
+    'certificate_generate',
+    'text_to_handwriting',
+    'manga_reader',
+    'novel_reader',
+    'urdu_novel',
+    'movies',
+    'telenor_quiz',
+    'n8n_workflow_explorer'
+  ].map(name => ({
+    name,
+    description: `AHM7 integration: ${name}.`,
+    category: 'media',
+    enabled: [
+      'screenshot_url',
+      'text_to_speech',
+      'image_vision',
+      'image_generate',
+      'drive_upload',
+      'download_video'
+    ].includes(name),
+    requires_sandbox: false,
+    parameters: {
+      type: 'object',
+      properties: {
+        input: { type: 'string' }
+      }
+    },
+    handler: name === 'download_video' ? 'media.downloadVideo' : `ahm7.${name}`
+  }))
 ]
+
+const defaultToolBulkTemplates = defaultTools.map(tool => ({
+  filter: { name: tool.name },
+  tool
+}))
 
 export class Store {
   private client?: MongoClient; private db?: Db
   constructor(private uri = process.env.MONGODB_URI, private dbName = process.env.MONGODB_DB ?? 'local_agent') {}
-  async connect() { if (!this.uri) return; this.client = new MongoClient(this.uri); await this.client.connect(); this.db = this.client.db(this.dbName); const col = this.db.collection<ToolDoc>('tools'); const now = new Date(); await col.bulkWrite(defaultTools.map(tool => ({ updateOne: { filter: { name: tool.name }, update: { $setOnInsert: { ...tool, created_at: now, updated_at: now } }, upsert: true } }))); }
+  async connect() {
+    if (!this.uri) return;
+    this.client = new MongoClient(this.uri);
+    await this.client.connect();
+    this.db = this.client.db(this.dbName);
+    const col = this.db.collection<ToolDoc>('tools');
+    const now = new Date();
+    const ops = defaultToolBulkTemplates.map(({ filter, tool }) => ({
+      updateOne: {
+        filter,
+        update: { $setOnInsert: { ...tool, created_at: now, updated_at: now } },
+        upsert: true
+      }
+    }));
+    await col.bulkWrite(ops);
+  }
   async tools() { if (!this.db) return defaultTools; return this.db.collection<ToolDoc>('tools').find().sort({ category: 1, name: 1 }).toArray() }
   async getTool(name: string) { if (!this.db) return defaultTools.find(t => t.name === name); return (await this.db.collection<ToolDoc>('tools').findOne({ name })) ?? undefined }
   async setTool(name: string, enabled: boolean) { if (this.db) await this.db.collection('tools').updateOne({ name }, { $set: { enabled, updated_at: new Date() } }); return this.getTool(name) }
