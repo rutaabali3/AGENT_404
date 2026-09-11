@@ -717,7 +717,7 @@ pnpm test
 
 `drizzle/schema.ts`
 ```ts
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { boolean, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -744,7 +744,21 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+/**
+ * Example application table.
+ * Replace or extend this table based on your application needs.
+ */
+export const items = mysqlTable("items", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  completed: boolean("completed").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Item = typeof items.$inferSelect;
+export type InsertItem = typeof items.$inferInsert;
 ```
 
 `server/db.ts`
@@ -840,7 +854,34 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function getUserItems(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select().from(items).where(eq(items.userId, userId));
+}
+
+export async function createItem(data: InsertItem) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(items).values(data);
+  return result.insertId;
+}
+
+export async function updateItem(id: number, data: Partial<InsertItem>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(items).set(data).where(eq(items.id, id));
+}
+
+export async function deleteItem(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(items).where(eq(items.id, id));
+}
 ```
 
 `server/routers.ts`
@@ -865,11 +906,10 @@ export const appRouter = router({
     }),
   }),
 
-  // Feature routers implementation
   todo: router({
-    list: protectedProcedure.query(({ ctx }) => {
-      return db.getUserTodos(ctx.user.id);
-    }),
+    list: protectedProcedure.query(({ ctx }) =>
+      db.getUserTodos(ctx.user.id)
+    ),
   }),
 });
 
@@ -1215,8 +1255,7 @@ function createAuthContext(): { ctx: TrpcContext; clearedCookies: CookieCall[] }
   return { ctx, clearedCookies };
 }
 
-// TODO: Remove `.skip` below once you implement user authentication
-describe.skip("auth.logout", () => {
+describe("auth.logout", () => {
   it("clears the session cookie and reports success", async () => {
     const { ctx, clearedCookies } = createAuthContext();
     const caller = appRouter.createCaller(ctx);
