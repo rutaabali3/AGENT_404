@@ -2,6 +2,58 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { Store, defaultTools } from '../src/agent/store.js'
 
+test('defaultTools - initialization and property correctness for mapped AHM7 tools', () => {
+  const mappedNames = [
+    'screenshot_url', 'text_to_speech', 'image_vision', 'image_generate',
+    'drive_upload', 'download_video', 'download_video_ahm7', 'temp_email',
+    'wiki_to_pdf', 'audio_transcribe', 'certificate_generate', 'text_to_handwriting',
+    'manga_reader', 'novel_reader', 'urdu_novel', 'movies', 'telenor_quiz',
+    'n8n_workflow_explorer'
+  ]
+
+  const enabledNames = new Set([
+    'screenshot_url', 'text_to_speech', 'image_vision',
+    'image_generate', 'drive_upload', 'download_video'
+  ])
+
+  // Verify unique names in defaultTools
+  const names = defaultTools.map(t => t.name)
+  assert.equal(names.length, new Set(names).size, 'defaultTools contains duplicate tool names')
+
+  for (const name of mappedNames) {
+    const tool = defaultTools.find(t => t.name === name)
+    assert.ok(tool, `Tool ${name} should exist in defaultTools`)
+    assert.equal(tool.category, 'media')
+    assert.equal(tool.requires_sandbox, false)
+    assert.equal(tool.description, `AHM7 integration: ${name}.`)
+    assert.deepEqual(tool.parameters, { type: 'object', properties: { input: { type: 'string' } } })
+
+    if (enabledNames.has(name)) {
+      assert.equal(tool.enabled, true, `Tool ${name} should be enabled`)
+    } else {
+      assert.equal(tool.enabled, false, `Tool ${name} should be disabled`)
+    }
+
+    if (name === 'download_video') {
+      assert.equal(tool.handler, 'media.downloadVideo')
+    } else {
+      assert.equal(tool.handler, `ahm7.${name}`)
+    }
+  }
+})
+
+test('defaultTools - schema compliance for all default tools', () => {
+  for (const tool of defaultTools) {
+    assert.ok(tool.name && typeof tool.name === 'string', 'Tool must have a non-empty string name')
+    assert.ok(tool.description && typeof tool.description === 'string', 'Tool must have a non-empty description')
+    assert.ok(tool.category && typeof tool.category === 'string', 'Tool must have a non-empty category')
+    assert.equal(typeof tool.enabled, 'boolean', 'Tool enabled property must be boolean')
+    assert.equal(typeof tool.requires_sandbox, 'boolean', 'Tool requires_sandbox property must be boolean')
+    assert.ok(tool.handler && typeof tool.handler === 'string', 'Tool must have a non-empty handler')
+    assert.ok(tool.parameters && typeof tool.parameters === 'object', 'Tool parameters must be an object')
+  }
+})
+
 test('Store - disconnected fallback behavior', async () => {
   const store = new Store(undefined) // No MongoDB URI
   const tool = await store.getTool('execute_python')
