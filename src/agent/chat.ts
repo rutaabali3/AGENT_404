@@ -155,8 +155,10 @@ export async function handleChatRequest(
         }
       }
 
-      for (const call of message.tool_calls) {
-        const { step, toolMessage } = await executeToolCall(call, enabled, store)
+      const toolResults = await Promise.all(
+        message.tool_calls.map((call: any) => executeToolCall(call, enabled, store))
+      )
+      for (const { step, toolMessage } of toolResults) {
         allSteps.push(step)
         messages.push(toolMessage)
       }
