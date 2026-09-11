@@ -1,5 +1,14 @@
 import crypto from 'node:crypto'
 import type { Request, Response, NextFunction } from 'express'
+import rateLimit from 'express-rate-limit'
+
+export const chatRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' }
+})
 
 function safeCompare(a: string, b: string): boolean {
   const bufA = Buffer.from(a)
