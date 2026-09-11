@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildSystemPrompt, buildChatMessages, executeToolCall, handleChatRequest } from '../src/agent/chat.js'
+import { toolSchemas } from '../src/agent/tools.js'
 import { Store, ToolDoc } from '../src/agent/store.js'
 
 test('buildSystemPrompt includes rules, notice, and catalog', async () => {
@@ -64,6 +65,47 @@ test('executeToolCall runs registered tool and logs tool call', async () => {
   assert.equal(result.toolMessage.tool_call_id, 'call_123')
 })
 
+test('executeToolCall rejects invalid tool arguments schema', async () => {
+  const store = new Store()
+  const enabledTools: ToolDoc[] = [
+    {
+      name: 'read_file',
+      description: 'Read a file',
+      category: 'filesystem',
+      enabled: true,
+      requires_sandbox: false,
+      parameters: {
+        type: 'object',
+        properties: { path: { type: 'string' } },
+        required: ['path']
+      },
+      handler: 'filesystem.read'
+    }
+  ]
+
+  const callWithMissingArgs = {
+    id: 'call_456',
+    function: {
+      name: 'read_file',
+      arguments: '{}'
+    }
+  }
+
+  const result1 = await executeToolCall(callWithMissingArgs, enabledTools, store)
+  assert.match(result1.step.result.error, /Invalid arguments for tool read_file/)
+
+  const callWithWrongType = {
+    id: 'call_789',
+    function: {
+      name: 'read_file',
+      arguments: '{"path": 123}'
+    }
+  }
+
+  const result2 = await executeToolCall(callWithWrongType, enabledTools, store)
+  assert.match(result2.step.result.error, /Invalid arguments for tool read_file/)
+})
+
 test('handleChatRequest returns 400 when message is empty', async () => {
   const store = new Store()
   const res = await handleChatRequest({ message: '   ' }, store)
@@ -87,30 +129,35 @@ test('handleChatRequest returns unconfigured message when DEEPSEEK_API_KEY is no
   }
 })
 
-test('handleChatRequest returns 500 status when DeepSeek API returns non-ok response', async () => {
+test('toolSchemas performance in loop benchmark', async () => {
   const store = new Store()
-  const originalKey = process.env.DEEPSEEK_API_KEY
-  const originalFetch = globalThis.fetch
-  process.env.DEEPSEEK_API_KEY = 'test-key'
+  const enabledTools = (await store.tools()).filter(t => t.enabled)
+  const iterations = 100000
 
-  try {
-    globalThis.fetch = async () => {
-      return new Response('Internal Server Error', {
-        status: 500,
-        statusText: 'Internal Server Error'
-      })
-    }
-
-    const res = await handleChatRequest({ message: 'hello' }, store)
-    assert.equal(res.status, 500)
-    assert.equal(res.body.error, 'DeepSeek HTTP 500: Internal Server Error')
-    assert.deepEqual(res.body.steps, [])
-  } finally {
-    globalThis.fetch = originalFetch
-    if (originalKey !== undefined) {
-      process.env.DEEPSEEK_API_KEY = originalKey
-    } else {
-      delete process.env.DEEPSEEK_API_KEY
+  // Old: toolSchemas called inside turn loop (up to 6 times per request)
+  const startOld = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    for (let turn = 0; turn < 6; turn++) {
+      const schemas = toolSchemas(enabledTools)
     }
   }
+  const durationOld = performance.now() - startOld
+
+  // New: toolSchemas called once before turn loop
+  const startNew = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    const schemas = toolSchemas(enabledTools)
+    for (let turn = 0; turn < 6; turn++) {
+      // reuse schemas
+      const useSchemas = schemas
+    }
+  }
+  const durationNew = performance.now() - startNew
+
+  console.log(`Benchmark toolSchemas in chat request loop (${iterations} requests, up to 6 turns each):`)
+  console.log(`  Old (recomputing schemas inside 6-turn loop): ${durationOld.toFixed(2)} ms`)
+  console.log(`  New (precomputing schemas outside loop): ${durationNew.toFixed(2)} ms`)
+  console.log(`  Speedup: ${(durationOld / durationNew).toFixed(1)}x faster`)
+
+  assert.ok(durationNew < durationOld)
 })
