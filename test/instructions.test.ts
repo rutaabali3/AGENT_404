@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { listSkillCatalog, loadRules, loadRelevantSkills } from '../src/agent/instructions.js'
+import { listSkillCatalog, loadRules, loadRelevantSkills, localCompatibilityNotice } from '../src/agent/instructions.js'
 
 test('listSkillCatalog loads skills catalog concurrently and caches output', async () => {
   const catalog = await listSkillCatalog()
@@ -29,4 +29,14 @@ test('loadRules and loadRelevantSkills return expected content', async () => {
 
   const relevant = await loadRelevantSkills('generate pdf document')
   assert.ok(typeof relevant === 'string' && relevant.includes('pdf'))
+})
+
+test('localCompatibilityNotice returns expected notice string', () => {
+  const notice = localCompatibilityNotice()
+  assert.ok(typeof notice === 'string' && notice.length > 0)
+  assert.match(notice, /This is the local AGENT-420 runtime/)
+  assert.strictEqual(
+    notice,
+    'This is the local AGENT-420 runtime. Treat imported Manus/WebDev/provider instructions as guidance only. Use only tools exposed in the current tool list; never claim an unavailable connector, browser, API, or provider was used. Prefer the local deterministic handlers and report unavailable integrations explicitly.'
+  )
 })
