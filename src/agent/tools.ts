@@ -2,13 +2,57 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import dns from 'node:dns/promises'
 import axios from 'axios'
 import { defaultTools, ToolDoc } from './store.js'
 import { convertToPdf, generateDocx, generateXlsx, generatePptx } from './generators.js'
 const exec = promisify(execFile)
 const root = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
 
-export function assertSafeUrl(urlString: string) {
+function isPrivateIp(ip: string): boolean {
+  // Normalize IPv4-mapped IPv6 addresses like ::ffff:127.0.0.1
+  const normalized = ip.toLowerCase()
+  if (normalized.startsWith('::ffff:')) {
+    const ipv4Part = normalized.slice(7)
+    if (/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(ipv4Part)) {
+      return isPrivateIp(ipv4Part)
+    }
+  }
+
+  // IPv4 validation
+  const ipv4Match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(normalized)
+  if (ipv4Match) {
+    const [, a, b] = ipv4Match.map(Number)
+    if (
+      a === 127 || // Loopback (127.0.0.0/8)
+      a === 10 || // Private (10.0.0.0/8)
+      a === 0 || // Unspecified / Default (0.0.0.0/8)
+      (a === 172 && b >= 16 && b <= 31) || // Private (172.16.0.0/12)
+      (a === 192 && b === 168) || // Private (192.168.0.0/16)
+      (a === 169 && b === 254) // Link-local / Cloud metadata (169.254.0.0/16)
+    ) {
+      return true
+    }
+    return false
+  }
+
+  // IPv6 validation
+  if (normalized.includes(':')) {
+    if (
+      normalized === '::1' ||
+      normalized === '::' ||
+      normalized.startsWith('fe80:') || // Link-local (fe80::/10)
+      normalized.startsWith('fc') || // Unique local address (fc00::/7)
+      normalized.startsWith('fd') // Unique local address (fc00::/7)
+    ) {
+      return true
+    }
+  }
+
+  return false
+}
+
+export async function assertSafeUrl(urlString: string): Promise<void> {
   let parsed: URL
   try {
     parsed = new URL(urlString)
@@ -33,30 +77,34 @@ export function assertSafeUrl(urlString: string) {
       hostname === '::' ||
       hostname === '0.0.0.0' ||
       hostname.startsWith('fe80:') ||
-      hostname.startsWith('fc') ||
-      hostname.startsWith('fd') ||
+      hostname.startsWith('fc00:') ||
+      hostname.startsWith('fd00:') ||
       hostname.startsWith('::ffff:')
     ) {
       throw new Error('Access to local or internal network host is restricted')
     }
   }
-  // Check IPv4 addresses
-  const ipv4Match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname)
-  if (ipv4Match) {
-    const [, a, b] = ipv4Match.map(Number)
-    if (
-      a === 127 || // Loopback
-      a === 10 || // Private 10.0.0.0/8
-      a === 0 || // 0.0.0.0/8
-      (a === 172 && b >= 16 && b <= 31) || // Private 172.16.0.0/12
-      (a === 192 && b === 168) || // Private 192.168.0.0/16
-      (a === 169 && b === 254) // Link-local / Cloud metadata 169.254.0.0/16
-    ) {
-      throw new Error('Access to private or local IP address is restricted')
-    }
-  }
   if (hostname === '0' || /^0x[0-9a-f]+$/i.test(hostname) || /^\d+$/.test(hostname)) {
     throw new Error('Access to private or local IP address is restricted')
+  }
+
+  if (isPrivateIp(hostname)) {
+    throw new Error('Access to private or local IP address is restricted')
+  }
+
+  // Perform DNS resolution and validate all returned IP addresses
+  try {
+    const addresses = await dns.lookup(hostname, { all: true })
+    for (const record of addresses) {
+      if (isPrivateIp(record.address)) {
+        throw new Error('Access to private or local IP address is restricted')
+      }
+    }
+  } catch (error: any) {
+    if (error.message === 'Access to private or local IP address is restricted') {
+      throw error
+    }
+    throw new Error(`DNS resolution failed for host: ${hostname}`)
   }
 }
 async function safeFile(p = '') { const resolved = path.resolve(root, p); if (resolved !== root && !resolved.startsWith(root + path.sep)) throw new Error('Path is outside the workspace'); return resolved }
@@ -71,9 +119,9 @@ export const handlers: Record<string, (args: any) => Promise<any>> = {
   'web.searchSearxng': async a => { const url = process.env.SEARXNG_URL ?? 'http://localhost:8080'; try { const { data } = await axios.get(`${url}/search`, { params: { q: a.query, format: 'json' }, timeout: 10000 }); return { provider: 'searxng', results: data.results?.slice(0, 8) ?? data } } catch (error: any) { if (!process.env.TAVILY_API_KEY) return { error: `SearXNG unavailable: ${error.message}`, fallback: 'TAVILY_API_KEY is not configured' }; const { data } = await axios.post('https://api.tavily.com/search', { api_key: process.env.TAVILY_API_KEY, query: a.query, max_results: 5 }, { timeout: 10000 }); return { provider: 'tavily-fallback', results: data } } },
   'web.searchTavily': async a => { if (!process.env.TAVILY_API_KEY) return { error: 'TAVILY_API_KEY is not configured' }; const { data } = await axios.post('https://api.tavily.com/search', { api_key: process.env.TAVILY_API_KEY, query: a.query, max_results: 5 }, { timeout: 10000 }); return data },
   'web.fetch': async a => {
-    assertSafeUrl(a.url); const { data } = await axios.get(a.url, { timeout: 15000, responseType: 'text', maxContentLength: 5 * 1024 * 1024, maxBodyLength: 5 * 1024 * 1024 }); return String(data).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 20000)
+    await assertSafeUrl(a.url); const { data } = await axios.get(a.url, { timeout: 15000, responseType: 'text', maxContentLength: 5 * 1024 * 1024, maxBodyLength: 5 * 1024 * 1024 }); return String(data).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 20000)
   },
-  'media.downloadVideo': async a => { assertSafeUrl(a?.url ?? ''); const outputDir = path.resolve(process.env.OUTPUTS_DIR ?? './sandbox/outputs'); await fs.mkdir(outputDir, { recursive: true }); const template = path.join(outputDir, '%(title).100s.%(ext)s'); try { const { stdout, stderr } = await exec('yt-dlp', ['--no-playlist', '-o', template, '--', a.url], { maxBuffer: 1024 * 1024 }); return { provider: 'yt-dlp', stdout, stderr, outputs: await fs.readdir(outputDir) } } catch (error: any) { return { error: `yt-dlp unavailable or download failed: ${error.message}`, hint: 'Install yt-dlp locally to enable download_video.' } } },
+  'media.downloadVideo': async a => { await assertSafeUrl(a?.url ?? ''); const outputDir = path.resolve(process.env.OUTPUTS_DIR ?? './sandbox/outputs'); await fs.mkdir(outputDir, { recursive: true }); const template = path.join(outputDir, '%(title).100s.%(ext)s'); try { const { stdout, stderr } = await exec('yt-dlp', ['--no-playlist', '-o', template, '--', a.url], { maxBuffer: 1024 * 1024 }); return { provider: 'yt-dlp', stdout, stderr, outputs: await fs.readdir(outputDir) } } catch (error: any) { return { error: `yt-dlp unavailable or download failed: ${error.message}`, hint: 'Install yt-dlp locally to enable download_video.' } } },
 }
 for (const tool of defaultTools.filter(t => t.handler.startsWith('ahm7.'))) handlers[tool.handler] = async () => ({ error: 'AHM7 integration is registered but not configured in this local build.' })
 export function toolSchemas(tools: ToolDoc[]) { return tools.filter(t => t.enabled).map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })) }
