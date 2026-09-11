@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildSystemPrompt, buildChatMessages, executeToolCall, handleChatRequest } from '../src/agent/chat.js'
 import { Store, ToolDoc } from '../src/agent/store.js'
+import { handlers } from '../src/agent/tools.js'
 
 test('buildSystemPrompt includes rules, notice, and catalog', async () => {
   const prompt = await buildSystemPrompt('Write a python script to calculate fibonacci')
@@ -62,6 +63,44 @@ test('executeToolCall runs registered tool and logs tool call', async () => {
   assert.ok(typeof result.step.duration === 'number')
   assert.equal(result.toolMessage.role, 'tool')
   assert.equal(result.toolMessage.tool_call_id, 'call_123')
+})
+
+test('executeToolCall catches error when runTool fails', async () => {
+  const store = new Store()
+  handlers['failing.tool'] = async () => {
+    throw new Error('Tool execution failed')
+  }
+
+  try {
+    const enabledTools: ToolDoc[] = [
+      {
+        name: 'failing_tool',
+        description: 'A tool that fails',
+        category: 'testing',
+        enabled: true,
+        requires_sandbox: false,
+        parameters: { type: 'object', properties: {} },
+        handler: 'failing.tool'
+      }
+    ]
+
+    const call = {
+      id: 'call_fail_123',
+      function: {
+        name: 'failing_tool',
+        arguments: '{}'
+      }
+    }
+
+    const result = await executeToolCall(call, enabledTools, store)
+    assert.equal(result.step.tool, 'failing_tool')
+    assert.deepEqual(result.step.result, { error: 'Tool execution failed' })
+    assert.equal(result.toolMessage.role, 'tool')
+    assert.equal(result.toolMessage.tool_call_id, 'call_fail_123')
+    assert.match(result.toolMessage.content, /Tool execution failed/)
+  } finally {
+    delete handlers['failing.tool']
+  }
 })
 
 test('handleChatRequest returns 400 when message is empty', async () => {
