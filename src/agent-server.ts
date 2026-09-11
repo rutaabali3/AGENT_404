@@ -10,9 +10,11 @@ const store = new Store()
 app.use(express.json({ limit: '2mb' }))
 app.use(express.static(path.resolve('public')))
 
-import { requireApiKey } from './agent/auth.js'
+import { requireApiKey, securityHeaders } from './agent/auth.js'
 
-export { requireApiKey }
+export { requireApiKey, securityHeaders }
+
+app.use(securityHeaders)
 
 app.get('/api/health', (_req, res) => {
   res.json({
