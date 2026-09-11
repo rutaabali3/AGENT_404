@@ -1,3 +1,4 @@
+import _Ajv from 'ajv'
 import { Store, ToolDoc } from './store.js'
 import { runTool, toolSchemas } from './tools.js'
 import {
@@ -7,6 +8,9 @@ import {
   listSkillCatalog,
   localCompatibilityNotice
 } from './instructions.js'
+
+const Ajv = _Ajv.default || _Ajv
+const ajv = new Ajv()
 
 export async function buildSystemPrompt(userMessage: string): Promise<string> {
   const rules = await loadRules()
@@ -46,6 +50,14 @@ export async function executeToolCall(call: any, enabledTools: ToolDoc[], store:
   const started = Date.now()
   let result: any
   try {
+    if (tool.parameters && Object.keys(tool.parameters).length > 0) {
+      const validate = ajv.compile(tool.parameters)
+      const valid = validate(args)
+      if (!valid) {
+        const errorDetails = validate.errors?.map((e: any) => `${e.instancePath || 'root'} ${e.message}`).join('; ')
+        throw new Error(`Invalid arguments for tool ${toolName}: ${errorDetails}`)
+      }
+    }
     result = await runTool(tool, args)
   } catch (error: any) {
     result = { error: error.message }
@@ -96,6 +108,7 @@ export async function handleChatRequest(
   }
 
   const enabled = (await store.tools()).filter(t => t.enabled)
+  const formattedTools = toolSchemas(enabled)
   const messages = await buildChatMessages(userMessage, reqBody.history)
   const allSteps: any[] = []
 
@@ -112,7 +125,7 @@ export async function handleChatRequest(
           body: JSON.stringify({
             model: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
             messages,
-            tools: toolSchemas(enabled),
+            tools: formattedTools,
             tool_choice: 'auto',
             temperature: 0.2
           })
