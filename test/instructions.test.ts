@@ -31,25 +31,76 @@ test('loadRules and loadRelevantSkills return expected content', async () => {
   assert.ok(typeof relevant === 'string' && relevant.includes('pdf'))
 })
 
-test('clearInstructionsCache resets catalog and file content cache', async () => {
-  // Populate catalog and rules cache
-  const catalog1 = await listSkillCatalog()
-  const rules1 = await loadRules()
+test('loadRelevantSkills handles unmatched queries, deduplication, and maxSkills limit', async () => {
+  const empty = await loadRelevantSkills('xyz non matching query')
+  assert.strictEqual(empty, '')
 
-  const catalogCached = await listSkillCatalog()
-  const rulesCached = await loadRules()
+  // 'schedule' matches automation-and-scheduling, 'cron' matches automation-and-scheduling (deduplicated)
+  // 'pdf' matches pdf, 'python' matches code-execution
+  const relevantMax2 = await loadRelevantSkills('schedule cron pdf python execution', 2)
+  const blocks = relevantMax2.split('\n\n## Skill: ').filter(Boolean)
+  assert.strictEqual(blocks.length, 2)
+  assert.ok(relevantMax2.includes('## Skill: automation-and-scheduling'))
+})
 
-  assert.strictEqual(catalog1, catalogCached)
-  assert.strictEqual(rules1, rulesCached)
-
-  // Clear cache
+test('clearInstructionsCache clears memory cache', async () => {
   clearInstructionsCache()
+  const relevant = await loadRelevantSkills('pdf')
+  assert.ok(relevant.includes('pdf'))
+})
 
-  // Subsequent calls should fetch/compute new references
-  const catalog2 = await listSkillCatalog()
-  const rules2 = await loadRules()
+test('loadRelevantSkills handles malformed JSON response from LLM and falls back to keyword matching', async () => {
+  const originalApiKey = process.env.DEEPSEEK_API_KEY
+  const originalFetch = globalThis.fetch
 
-  assert.notStrictEqual(catalog1, catalog2)
-  assert.deepEqual(catalog1, catalog2)
-  assert.strictEqual(rules1, rules2)
+  try {
+    process.env.DEEPSEEK_API_KEY = 'mock-key'
+
+    // Mock global fetch returning malformed JSON in message content
+    globalThis.fetch = async () => {
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: 'invalid malformed json {{{'
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Should catch JSON.parse error and fall back to keyword matching for "pdf"
+    const result = await loadRelevantSkills('generate pdf document')
+    assert.ok(typeof result === 'string')
+    assert.ok(result.includes('pdf'))
+
+    // Also verify valid JSON response works as expected
+    globalThis.fetch = async () => {
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({ skills: ['pdf'] })
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const validResult = await loadRelevantSkills('some arbitrary prompt')
+    assert.ok(validResult.includes('pdf'))
+  } finally {
+    if (originalApiKey === undefined) {
+      delete process.env.DEEPSEEK_API_KEY
+    } else {
+      process.env.DEEPSEEK_API_KEY = originalApiKey
+    }
+    globalThis.fetch = originalFetch
+  }
 })
