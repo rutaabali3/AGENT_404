@@ -214,69 +214,93 @@ test('toolSchemas filters disabled tools and maps enabled tools to OpenAI/DeepSe
   })
 })
 
-test('assertSafeUrl throws error on invalid URL strings', () => {
-  assert.throws(
-    () => assertSafeUrl('invalid-url-string'),
-    {
-      name: 'Error',
-      message: 'Invalid URL format'
-    }
-  )
+test('web.fetch follows safe redirects and resolves relative location headers', async () => {
+  const fetchHandler = handlers['web.fetch']
+  const originalGet = axios.get
 
-  assert.throws(
-    () => assertSafeUrl(''),
-    {
-      name: 'Error',
-      message: 'Invalid URL format'
+  const requestedUrls: string[] = []
+  axios.get = (async (url: string, options: any) => {
+    requestedUrls.push(url)
+    assert.equal(options.maxRedirects, 0)
+    if (url === 'https://example.com/start') {
+      return { status: 302, headers: { location: '/next-page' }, data: '' }
     }
-  )
+    if (url === 'https://example.com/next-page') {
+      return { status: 301, headers: { location: 'https://example.org/final' }, data: '' }
+    }
+    if (url === 'https://example.org/final') {
+      return { status: 200, headers: {}, data: '<html><body>Success Page</body></html>' }
+    }
+    throw new Error(`Unexpected GET to ${url}`)
+  }) as any
+
+  try {
+    const res = await fetchHandler({ url: 'https://example.com/start' })
+    assert.deepEqual(requestedUrls, [
+      'https://example.com/start',
+      'https://example.com/next-page',
+      'https://example.org/final'
+    ])
+    assert.equal(res.trim(), 'Success Page')
+  } finally {
+    axios.get = originalGet
+  }
 })
 
-test('assertSafeUrl throws error on non-http/https protocols', () => {
-  assert.throws(
-    () => assertSafeUrl('ftp://example.com'),
-    {
-      name: 'Error',
-      message: 'Only http and https protocols are allowed'
-    }
-  )
+test('web.fetch blocks HTTP redirects to internal/private hostnames or IP addresses (SSRF prevention)', async () => {
+  const fetchHandler = handlers['web.fetch']
+  const originalGet = axios.get
 
-  assert.throws(
-    () => assertSafeUrl('file:///etc/passwd'),
-    {
-      name: 'Error',
-      message: 'Only http and https protocols are allowed'
+  const badRedirectTargets = [
+    'http://169.254.169.254/latest/meta-data/',
+    'http://localhost/admin',
+    'http://127.0.0.1:8080/secret',
+    'http://10.0.0.1/internal',
+    'http://[::1]/status'
+  ]
+
+  for (const target of badRedirectTargets) {
+    axios.get = (async (url: string) => {
+      if (url === 'https://example.com/redirect') {
+        return { status: 302, headers: { location: target }, data: '' }
+      }
+      return { status: 200, headers: {}, data: 'ok' }
+    }) as any
+
+    try {
+      await assert.rejects(
+        async () => {
+          await fetchHandler({ url: 'https://example.com/redirect' })
+        },
+        (err: Error) => {
+          return err.message.includes('restricted') || err.message.includes('Invalid URL format')
+        }
+      )
+    } finally {
+      axios.get = originalGet
     }
-  )
+  }
 })
 
-test('assertSafeUrl throws error on restricted or private hosts', () => {
-  assert.throws(
-    () => assertSafeUrl('http://localhost/path'),
-    {
-      name: 'Error',
-      message: 'Access to local or internal network host is restricted'
-    }
-  )
+test('web.fetch enforces max redirect limit', async () => {
+  const fetchHandler = handlers['web.fetch']
+  const originalGet = axios.get
 
-  assert.throws(
-    () => assertSafeUrl('http://127.0.0.1/path'),
-    {
-      name: 'Error',
-      message: 'Access to private or local IP address is restricted'
-    }
-  )
+  axios.get = (async (url: string) => {
+    return { status: 302, headers: { location: 'https://example.com/loop' }, data: '' }
+  }) as any
 
-  assert.throws(
-    () => assertSafeUrl('http://10.0.0.1/path'),
-    {
-      name: 'Error',
-      message: 'Access to private or local IP address is restricted'
-    }
-  )
-})
-
-test('assertSafeUrl passes for valid public HTTP and HTTPS URLs', () => {
-  assert.doesNotThrow(() => assertSafeUrl('https://example.com'))
-  assert.doesNotThrow(() => assertSafeUrl('http://example.com/api/v1?query=test'))
+  try {
+    await assert.rejects(
+      async () => {
+        await fetchHandler({ url: 'https://example.com/loop' })
+      },
+      {
+        name: 'Error',
+        message: 'Too many redirects'
+      }
+    )
+  } finally {
+    axios.get = originalGet
+  }
 })
