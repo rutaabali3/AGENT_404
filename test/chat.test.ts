@@ -64,6 +64,59 @@ test('executeToolCall runs registered tool and logs tool call', async () => {
   assert.equal(result.toolMessage.tool_call_id, 'call_123')
 })
 
+test('Benchmark parallel vs sequential execution of multiple tool calls', async () => {
+  const store = new Store()
+  const enabledTools: ToolDoc[] = [
+    {
+      name: 'list_files',
+      description: 'List files in workspace',
+      category: 'filesystem',
+      enabled: true,
+      requires_sandbox: false,
+      parameters: { type: 'object', properties: {} },
+      handler: 'filesystem.list'
+    }
+  ]
+
+  const calls = Array.from({ length: 5 }, (_, i) => ({
+    id: `call_${i}`,
+    function: { name: 'list_files', arguments: '{}' }
+  }))
+
+  // Simulate async tool execution delays (e.g. 50ms per tool)
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+  // Sequential execution
+  const startSeq = Date.now()
+  const seqResults: any[] = []
+  for (const call of calls) {
+    await delay(50)
+    const res = await executeToolCall(call, enabledTools, store)
+    seqResults.push(res)
+  }
+  const durationSeq = Date.now() - startSeq
+
+  // Parallel execution
+  const startPar = Date.now()
+  const parResults = await Promise.all(
+    calls.map(async call => {
+      await delay(50)
+      return executeToolCall(call, enabledTools, store)
+    })
+  )
+  const durationPar = Date.now() - startPar
+
+  console.log(`Sequential execution duration: ${durationSeq} ms`)
+  console.log(`Parallel execution duration: ${durationPar} ms`)
+
+  assert.equal(seqResults.length, 5)
+  assert.equal(parResults.length, 5)
+  for (let i = 0; i < 5; i++) {
+    assert.equal(seqResults[i].toolMessage.tool_call_id, `call_${i}`)
+    assert.equal(parResults[i].toolMessage.tool_call_id, `call_${i}`)
+  }
+})
+
 test('handleChatRequest returns 400 when message is empty', async () => {
   const store = new Store()
   const res = await handleChatRequest({ message: '   ' }, store)
