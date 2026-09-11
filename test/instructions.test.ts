@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { listSkillCatalog, loadRules, loadRelevantSkills } from '../src/agent/instructions.js'
+import { listSkillCatalog, loadRules, loadRelevantSkills, loadSkillForTool, clearInstructionsCache } from '../src/agent/instructions.js'
 
 test('listSkillCatalog loads skills catalog concurrently and caches output', async () => {
   const catalog = await listSkillCatalog()
@@ -29,4 +29,21 @@ test('loadRules and loadRelevantSkills return expected content', async () => {
 
   const relevant = await loadRelevantSkills('generate pdf document')
   assert.ok(typeof relevant === 'string' && relevant.includes('pdf'))
+})
+
+test('loadSkillForTool returns content for valid tools and empty string for unknown tools', async () => {
+  clearInstructionsCache()
+
+  const filesystemSkill = await loadSkillForTool('read_file')
+  assert.ok(typeof filesystemSkill === 'string' && filesystemSkill.length > 0)
+
+  const codeExecutionSkill = await loadSkillForTool('execute_python')
+  assert.ok(typeof codeExecutionSkill === 'string' && codeExecutionSkill.length > 0)
+
+  const unknownSkill = await loadSkillForTool('unknown_tool_123')
+  assert.strictEqual(unknownSkill, '')
+
+  // Verify caching: calling loadSkillForTool again returns same string from cache
+  const filesystemSkillCached = await loadSkillForTool('read_file')
+  assert.strictEqual(filesystemSkill, filesystemSkillCached)
 })
