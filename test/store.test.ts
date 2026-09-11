@@ -10,6 +10,54 @@ test('Store - disconnected fallback behavior', async () => {
 
   const nonExistent = await store.getTool('non_existent_tool')
   assert.equal(nonExistent, undefined)
+
+  // saveSession should be a no-op when disconnected and not throw
+  await assert.doesNotReject(async () => {
+    await store.saveSession([{ role: 'user', content: 'hello' }])
+  })
+})
+
+test('Store - saveSession inserts session into database when connected', async () => {
+  const store = new Store(undefined)
+  const insertedDocs: unknown[] = []
+
+  // Mock DB and collection
+  const mockCollection = {
+    insertOne: async (doc: unknown) => {
+      insertedDocs.push(doc)
+      return { acknowledged: true, insertedId: 'mock_id' }
+    }
+  }
+
+  const mockDb = {
+    collection: (name: string) => {
+      assert.equal(name, 'sessions')
+      return mockCollection
+    }
+  }
+
+  // Inject mock db into store instance
+  ;(store as any).db = mockDb
+
+  const messages = [
+    { role: 'user', content: 'hello' },
+    { role: 'assistant', content: 'world' }
+  ]
+
+  const before = Date.now()
+  await store.saveSession(messages)
+  const after = Date.now()
+
+  assert.equal(insertedDocs.length, 1)
+  const inserted = insertedDocs[0] as { messages: unknown[]; created_at: Date }
+  assert.deepEqual(inserted.messages, messages)
+  assert.ok(inserted.created_at instanceof Date)
+  assert.ok(inserted.created_at.getTime() >= before && inserted.created_at.getTime() <= after)
+
+  // Edge case: empty messages array
+  await store.saveSession([])
+  assert.equal(insertedDocs.length, 2)
+  assert.deepEqual((insertedDocs[1] as { messages: unknown[] }).messages, [])
 })
 
 test('Store - getTool with in-memory store simulation / benchmark', async () => {
