@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { buildSystemPrompt, buildChatMessages, executeToolCall, handleChatRequest } from '../src/agent/chat.js'
 import { toolSchemas } from '../src/agent/tools.js'
 import { Store, ToolDoc } from '../src/agent/store.js'
+import { handlers } from '../src/agent/tools.js'
 
 test('buildSystemPrompt includes rules, notice, and catalog', async () => {
   const prompt = await buildSystemPrompt('Write a python script to calculate fibonacci')

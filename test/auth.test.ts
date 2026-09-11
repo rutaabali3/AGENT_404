@@ -8,11 +8,11 @@ function createMockReqRes(headers: Record<string, string | undefined> = {}) {
   const req = { headers } as any
   let statusResult: number | undefined
   let jsonResult: any
-  const responseHeaders: Record<string, string> = {}
+  const setHeaders: Record<string, string> = {}
 
   const res = {
     setHeader(name: string, value: string) {
-      responseHeaders[name.toLowerCase()] = value
+      setHeaders[name] = value
       return res
     },
     status(code: number) {
@@ -25,7 +25,7 @@ function createMockReqRes(headers: Record<string, string | undefined> = {}) {
     }
   } as any
 
-  return { req, res, responseHeaders, getStatus: () => statusResult, getJson: () => jsonResult }
+  return { req, res, getStatus: () => statusResult, getJson: () => jsonResult, getSetHeaders: () => setHeaders }
 }
 
 test('securityHeaders sets expected HTTP response headers and calls next', () => {

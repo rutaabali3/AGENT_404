@@ -29,6 +29,32 @@ test('loadRules and loadRelevantSkills return expected content', async () => {
 
   const relevant = await loadRelevantSkills('generate pdf document')
   assert.ok(typeof relevant === 'string' && relevant.includes('pdf'))
+
+  // Handle empty or whitespace request edge cases
+  const emptyRelevant = await loadRelevantSkills('')
+  assert.strictEqual(emptyRelevant, '')
+
+  const spaceRelevant = await loadRelevantSkills('   ')
+  assert.strictEqual(spaceRelevant, '')
+})
+
+test('benchmark loadRelevantSkills', async () => {
+  // Benchmark empty request
+  const iterations = 100000
+  const startEmpty = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    await loadRelevantSkills('')
+  }
+  const durationEmpty = performance.now() - startEmpty
+  console.log(`[Benchmark] Empty request (${iterations} ops): ${durationEmpty.toFixed(2)} ms`)
+
+  // Benchmark request that matches skills quickly
+  const startMatch = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    await loadRelevantSkills('schedule llm backup finance browser game pptx music persistent service ocr skill')
+  }
+  const durationMatch = performance.now() - startMatch
+  console.log(`[Benchmark] Matching request (${iterations} ops): ${durationMatch.toFixed(2)} ms`)
 })
 
 test('loadRelevantSkills handles unmatched queries, deduplication, and maxSkills limit', async () => {
