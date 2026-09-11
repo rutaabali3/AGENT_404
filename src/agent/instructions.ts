@@ -114,19 +114,51 @@ export async function listSkillCatalog() {
 }
 
 export async function loadRelevantSkills(request: string, maxSkills = 4) {
-  if (!request || !request.trim()) return ''
-  const selected: string[] = []
-  for (const [pattern, skill] of keywordToSkill) {
-    if (pattern.test(request) && !selected.includes(skill)) {
-      selected.push(skill)
-      if (selected.length >= maxSkills) break
+  let skills: string[] = []
+  const apiKey = process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY
+  if (apiKey) {
+    try {
+      const baseUrl = process.env.DEEPSEEK_API_KEY ? 'https://api.deepseek.com/v1' : 'https://api.openai.com/v1'
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [{ role: 'user', content: request }]
+        })
+      })
+      const data: any = await response.json()
+      const text = data.choices?.[0]?.message?.content || ''
+      try {
+        const parsed = JSON.parse(text)
+        if (Array.isArray(parsed.skills)) skills = parsed.skills
+      } catch {
+        // fallback
+      }
+    } catch {
+      // fallback
     }
   }
-  const blocks = await Promise.all(selected.map(async skill => {
-    const body = await readCached(path.join(skillsRoot, skill, 'SKILL.md'))
-    return `## Skill: ${skill}\n${body}`
+
+  if (skills.length === 0) {
+    const selected: string[] = []
+    for (const [pattern, skill] of keywordToSkill) if (pattern.test(request) && !selected.includes(skill)) selected.push(skill)
+    skills = selected
+  }
+
+  const finalSkills = skills.slice(0, maxSkills)
+  const blocks = await Promise.all(finalSkills.map(async skill => {
+    try {
+      const body = await readCached(path.join(skillsRoot, skill, 'SKILL.md'))
+      return `## Skill: ${skill}\n${body}`
+    } catch {
+      return null
+    }
   }))
-  return blocks.join('\n\n')
+  return blocks.filter((b): b is string => b !== null).join('\n\n')
 }
 
 export function localCompatibilityNotice() {
