@@ -10,9 +10,9 @@ const store = new Store()
 app.use(express.json({ limit: '2mb' }))
 app.use(express.static(path.resolve('public')))
 
-import { requireApiKey, securityHeaders } from './agent/auth.js'
+import { requireApiKey, securityHeaders, chatRateLimiter } from './agent/auth.js'
 
-export { requireApiKey, securityHeaders }
+export { requireApiKey, securityHeaders, chatRateLimiter }
 
 app.use(securityHeaders)
 
@@ -37,7 +37,7 @@ app.patch('/api/tools/:name', async (req, res) => {
   res.json(await store.setTool(name, enabled))
 })
 
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', chatRateLimiter, async (req, res) => {
   const result = await handleChatRequest(req.body ?? {}, store)
   res.status(result.status).json(result.body)
 })
