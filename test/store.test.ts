@@ -51,3 +51,47 @@ test('Store - getTool with in-memory store simulation / benchmark', async () => 
   console.log(`  New (direct lookup): ${durationNew.toFixed(2)} ms`)
   console.log(`  Speedup: ${(durationOld / durationNew).toFixed(1)}x faster`)
 })
+
+test('Store - connect bulkWrite mapping benchmark', async () => {
+  const iterations = 100000
+
+  // Baseline: Mapping defaultTools on every connect
+  const startOld = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    const now = new Date()
+    const ops = defaultTools.map(tool => ({
+      updateOne: {
+        filter: { name: tool.name },
+        update: { $setOnInsert: { ...tool, created_at: now, updated_at: now } },
+        upsert: true
+      }
+    }))
+    assert.equal(ops.length, defaultTools.length)
+  }
+  const durationOld = performance.now() - startOld
+
+  // Pre-computed operations template
+  const defaultToolBulkTemplates = defaultTools.map(tool => ({
+    filter: { name: tool.name },
+    tool
+  }))
+
+  const startNew = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    const now = new Date()
+    const ops = defaultToolBulkTemplates.map(({ filter, tool }) => ({
+      updateOne: {
+        filter,
+        update: { $setOnInsert: { ...tool, created_at: now, updated_at: now } },
+        upsert: true
+      }
+    }))
+    assert.equal(ops.length, defaultTools.length)
+  }
+  const durationNew = performance.now() - startNew
+
+  console.log(`Connect mapping Benchmark (${iterations} ops):`)
+  console.log(`  Old (mapping array and objects on connect): ${durationOld.toFixed(2)} ms`)
+  console.log(`  New (reusing pre-computed operations): ${durationNew.toFixed(2)} ms`)
+  console.log(`  Speedup: ${(durationOld / durationNew).toFixed(1)}x faster`)
+})
