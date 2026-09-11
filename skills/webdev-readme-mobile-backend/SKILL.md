@@ -854,7 +854,34 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function getUserItems(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select().from(items).where(eq(items.userId, userId));
+}
+
+export async function createItem(data: InsertItem) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(items).values(data);
+  return result.insertId;
+}
+
+export async function updateItem(id: number, data: Partial<InsertItem>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(items).set(data).where(eq(items.id, id));
+}
+
+export async function deleteItem(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(items).where(eq(items.id, id));
+}
 ```
 
 `server/routers.ts`
