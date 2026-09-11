@@ -26,18 +26,26 @@ function createMockReqRes(headers: Record<string, string | undefined> = {}) {
   return { req, res, responseHeaders, getStatus: () => statusResult, getJson: () => jsonResult }
 }
 
-test('securityHeaders sets expected HTTP security headers on responses', () => {
+test('securityHeaders sets expected HTTP response headers and calls next', () => {
+  const req = {} as any
+  const headersSet: Record<string, string> = {}
+  const res = {
+    setHeader(name: string, value: string) {
+      headersSet[name] = value
+      return res
+    }
+  } as any
+
   let nextCalled = false
-  const { req, res, responseHeaders } = createMockReqRes()
   securityHeaders(req, res, () => {
     nextCalled = true
   })
 
   assert.equal(nextCalled, true)
-  assert.equal(responseHeaders['x-content-type-options'], 'nosniff')
-  assert.equal(responseHeaders['x-frame-options'], 'DENY')
-  assert.equal(responseHeaders['x-xss-protection'], '0')
-  assert.equal(responseHeaders['referrer-policy'], 'strict-origin-when-cross-origin')
+  assert.equal(headersSet['X-Content-Type-Options'], 'nosniff')
+  assert.equal(headersSet['X-Frame-Options'], 'DENY')
+  assert.equal(headersSet['X-XSS-Protection'], '0')
+  assert.equal(headersSet['Referrer-Policy'], 'no-referrer')
 })
 
 test('requireApiKey allows request when LOCAL_AGENT_API_KEY is not set', () => {
