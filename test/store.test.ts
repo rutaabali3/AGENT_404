@@ -389,6 +389,53 @@ test('Store - connect initializes client, db, and populates default tools', asyn
   }
 })
 
+test('Store.connect - early return when uri is undefined', async (t) => {
+  const connectMock = t.mock.method(MongoClient.prototype, 'connect', async () => {})
+  const store = new Store(undefined)
+  await store.connect()
+  assert.equal(connectMock.mock.callCount(), 0)
+})
+
+test('Store.connect - connects to MongoDB and initializes tools collection with bulkWrite', async (t) => {
+  let bulkWriteCalledWith: unknown[] = []
+  let collectionRequested: string | undefined
+
+  const mockCollection = {
+    bulkWrite: async (operations: unknown[]) => {
+      bulkWriteCalledWith = operations
+      return { ok: 1 }
+    }
+  }
+
+  const mockDb = {
+    collection: (name: string) => {
+      collectionRequested = name
+      return mockCollection as any
+    }
+  }
+
+  const connectMock = t.mock.method(MongoClient.prototype, 'connect', async () => {})
+  const dbMock = t.mock.method(MongoClient.prototype, 'db', (dbName?: string) => {
+    assert.equal(dbName, 'custom_agent_db')
+    return mockDb as any
+  })
+
+  const store = new Store('mongodb://localhost:27017', 'custom_agent_db')
+  await store.connect()
+
+  assert.equal(connectMock.mock.callCount(), 1)
+  assert.equal(dbMock.mock.callCount(), 1)
+  assert.equal(collectionRequested, 'tools')
+  assert.equal(bulkWriteCalledWith.length, defaultTools.length)
+
+  const firstOp = bulkWriteCalledWith[0] as { updateOne: { filter: { name: string }; update: { $setOnInsert: Record<string, unknown> }; upsert: boolean } }
+  assert.equal(firstOp.updateOne.filter.name, defaultTools[0].name)
+  assert.equal(firstOp.updateOne.upsert, true)
+  assert.equal(firstOp.updateOne.update.$setOnInsert.name, defaultTools[0].name)
+  assert.ok(firstOp.updateOne.update.$setOnInsert.created_at instanceof Date)
+  assert.ok(firstOp.updateOne.update.$setOnInsert.updated_at instanceof Date)
+})
+
 test('Store - getTool with in-memory store simulation / benchmark', async () => {
   // Benchmark comparing finding in array vs findOne query simulation
   const numTools = 10000
