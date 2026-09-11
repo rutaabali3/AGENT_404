@@ -64,6 +64,61 @@ test('executeToolCall runs registered tool and logs tool call', async () => {
   assert.equal(result.toolMessage.tool_call_id, 'call_123')
 })
 
+test('executeToolCall handles invalid JSON in arguments gracefully', async () => {
+  const store = new Store()
+  const enabledTools: ToolDoc[] = [
+    {
+      name: 'list_files',
+      description: 'List files in workspace',
+      category: 'filesystem',
+      enabled: true,
+      requires_sandbox: false,
+      parameters: { type: 'object', properties: {} },
+      handler: 'filesystem.list'
+    }
+  ]
+
+  const call = {
+    id: 'call_invalid_json',
+    function: {
+      name: 'list_files',
+      arguments: '{ invalid json string '
+    }
+  }
+
+  const result = await executeToolCall(call, enabledTools, store)
+  assert.equal(result.step.tool, 'list_files')
+  assert.equal(result.toolMessage.role, 'tool')
+  assert.equal(result.toolMessage.tool_call_id, 'call_invalid_json')
+})
+
+test('executeToolCall handles missing or undefined arguments gracefully', async () => {
+  const store = new Store()
+  const enabledTools: ToolDoc[] = [
+    {
+      name: 'list_files',
+      description: 'List files in workspace',
+      category: 'filesystem',
+      enabled: true,
+      requires_sandbox: false,
+      parameters: { type: 'object', properties: {} },
+      handler: 'filesystem.list'
+    }
+  ]
+
+  const call = {
+    id: 'call_missing_args',
+    function: {
+      name: 'list_files'
+    }
+  }
+
+  const result = await executeToolCall(call, enabledTools, store)
+  assert.equal(result.step.tool, 'list_files')
+  assert.equal(result.toolMessage.role, 'tool')
+  assert.equal(result.toolMessage.tool_call_id, 'call_missing_args')
+})
+
 test('handleChatRequest returns 400 when message is empty', async () => {
   const store = new Store()
   const res = await handleChatRequest({ message: '   ' }, store)
