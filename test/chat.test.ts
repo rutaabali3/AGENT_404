@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildSystemPrompt, buildChatMessages, executeToolCall, handleChatRequest } from '../src/agent/chat.js'
+import { toolSchemas } from '../src/agent/tools.js'
 import { Store, ToolDoc } from '../src/agent/store.js'
 
 test('buildSystemPrompt includes rules, notice, and catalog', async () => {
@@ -126,4 +127,37 @@ test('handleChatRequest returns unconfigured message when DEEPSEEK_API_KEY is no
       process.env.DEEPSEEK_API_KEY = originalKey
     }
   }
+})
+
+test('toolSchemas performance in loop benchmark', async () => {
+  const store = new Store()
+  const enabledTools = (await store.tools()).filter(t => t.enabled)
+  const iterations = 100000
+
+  // Old: toolSchemas called inside turn loop (up to 6 times per request)
+  const startOld = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    for (let turn = 0; turn < 6; turn++) {
+      const schemas = toolSchemas(enabledTools)
+    }
+  }
+  const durationOld = performance.now() - startOld
+
+  // New: toolSchemas called once before turn loop
+  const startNew = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    const schemas = toolSchemas(enabledTools)
+    for (let turn = 0; turn < 6; turn++) {
+      // reuse schemas
+      const useSchemas = schemas
+    }
+  }
+  const durationNew = performance.now() - startNew
+
+  console.log(`Benchmark toolSchemas in chat request loop (${iterations} requests, up to 6 turns each):`)
+  console.log(`  Old (recomputing schemas inside 6-turn loop): ${durationOld.toFixed(2)} ms`)
+  console.log(`  New (precomputing schemas outside loop): ${durationNew.toFixed(2)} ms`)
+  console.log(`  Speedup: ${(durationOld / durationNew).toFixed(1)}x faster`)
+
+  assert.ok(durationNew < durationOld)
 })

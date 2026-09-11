@@ -108,6 +108,7 @@ export async function handleChatRequest(
   }
 
   const enabled = (await store.tools()).filter(t => t.enabled)
+  const formattedTools = toolSchemas(enabled)
   const messages = await buildChatMessages(userMessage, reqBody.history)
   const allSteps: any[] = []
 
@@ -124,7 +125,7 @@ export async function handleChatRequest(
           body: JSON.stringify({
             model: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
             messages,
-            tools: toolSchemas(enabled),
+            tools: formattedTools,
             tool_choice: 'auto',
             temperature: 0.2
           })
