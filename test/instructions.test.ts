@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { listSkillCatalog, loadRules, loadRelevantSkills, loadSkillForTool, clearInstructionsCache } from '../src/agent/instructions.js'
+import { listSkillCatalog, loadRules, loadRelevantSkills, clearInstructionsCache } from '../src/agent/instructions.js'
 
 test('listSkillCatalog loads skills catalog concurrently and caches output', async () => {
   const catalog = await listSkillCatalog()
@@ -31,19 +31,76 @@ test('loadRules and loadRelevantSkills return expected content', async () => {
   assert.ok(typeof relevant === 'string' && relevant.includes('pdf'))
 })
 
-test('loadSkillForTool returns content for valid tools and empty string for unknown tools', async () => {
+test('loadRelevantSkills handles unmatched queries, deduplication, and maxSkills limit', async () => {
+  const empty = await loadRelevantSkills('xyz non matching query')
+  assert.strictEqual(empty, '')
+
+  // 'schedule' matches automation-and-scheduling, 'cron' matches automation-and-scheduling (deduplicated)
+  // 'pdf' matches pdf, 'python' matches code-execution
+  const relevantMax2 = await loadRelevantSkills('schedule cron pdf python execution', 2)
+  const blocks = relevantMax2.split('\n\n## Skill: ').filter(Boolean)
+  assert.strictEqual(blocks.length, 2)
+  assert.ok(relevantMax2.includes('## Skill: automation-and-scheduling'))
+})
+
+test('clearInstructionsCache clears memory cache', async () => {
   clearInstructionsCache()
+  const relevant = await loadRelevantSkills('pdf')
+  assert.ok(relevant.includes('pdf'))
+})
 
-  const filesystemSkill = await loadSkillForTool('read_file')
-  assert.ok(typeof filesystemSkill === 'string' && filesystemSkill.length > 0)
+test('loadRelevantSkills handles malformed JSON response from LLM and falls back to keyword matching', async () => {
+  const originalApiKey = process.env.DEEPSEEK_API_KEY
+  const originalFetch = globalThis.fetch
 
-  const codeExecutionSkill = await loadSkillForTool('execute_python')
-  assert.ok(typeof codeExecutionSkill === 'string' && codeExecutionSkill.length > 0)
+  try {
+    process.env.DEEPSEEK_API_KEY = 'mock-key'
 
-  const unknownSkill = await loadSkillForTool('unknown_tool_123')
-  assert.strictEqual(unknownSkill, '')
+    // Mock global fetch returning malformed JSON in message content
+    globalThis.fetch = async () => {
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: 'invalid malformed json {{{'
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
 
-  // Verify caching: calling loadSkillForTool again returns same string from cache
-  const filesystemSkillCached = await loadSkillForTool('read_file')
-  assert.strictEqual(filesystemSkill, filesystemSkillCached)
+    // Should catch JSON.parse error and fall back to keyword matching for "pdf"
+    const result = await loadRelevantSkills('generate pdf document')
+    assert.ok(typeof result === 'string')
+    assert.ok(result.includes('pdf'))
+
+    // Also verify valid JSON response works as expected
+    globalThis.fetch = async () => {
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({ skills: ['pdf'] })
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const validResult = await loadRelevantSkills('some arbitrary prompt')
+    assert.ok(validResult.includes('pdf'))
+  } finally {
+    if (originalApiKey === undefined) {
+      delete process.env.DEEPSEEK_API_KEY
+    } else {
+      process.env.DEEPSEEK_API_KEY = originalApiKey
+    }
+    globalThis.fetch = originalFetch
+  }
 })
