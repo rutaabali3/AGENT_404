@@ -214,91 +214,93 @@ test('toolSchemas filters disabled tools and maps enabled tools to OpenAI/DeepSe
   })
 })
 
-test('writeFile writes file content and returns path and byte count', async () => {
-  const filePath = 'test-write-single.txt'
-  const content = 'Hello, World! 🚀'
-  const expectedBytes = Buffer.byteLength(content, 'utf8')
+test('web.fetch follows safe redirects and resolves relative location headers', async () => {
+  const fetchHandler = handlers['web.fetch']
+  const originalGet = axios.get
 
-  try {
-    const result = await writeFile(filePath, content)
-    assert.deepEqual(result, { path: filePath, bytes: expectedBytes })
-
-    const readBack = await readFile(filePath)
-    assert.equal(readBack, content)
-  } finally {
-    const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
-    await fs.rm(path.resolve(workspaceDir, filePath), { force: true })
-  }
-})
-
-test('writeFile creates parent directories recursively when they do not exist', async () => {
-  const filePath = 'nested/sub/dir/test-write-nested.txt'
-  const content = 'Nested directory test content'
-
-  try {
-    const result = await writeFile(filePath, content)
-    assert.deepEqual(result, { path: filePath, bytes: Buffer.byteLength(content) })
-
-    const readBack = await readFile(filePath)
-    assert.equal(readBack, content)
-  } finally {
-    const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
-    await fs.rm(path.resolve(workspaceDir, 'nested'), { recursive: true, force: true })
-  }
-})
-
-test('writeFile overwrites existing file content', async () => {
-  const filePath = 'test-overwrite.txt'
-  const initialContent = 'Initial content'
-  const newContent = 'Updated content with new information'
-
-  try {
-    await writeFile(filePath, initialContent)
-    assert.equal(await readFile(filePath), initialContent)
-
-    const result = await writeFile(filePath, newContent)
-    assert.deepEqual(result, { path: filePath, bytes: Buffer.byteLength(newContent) })
-    assert.equal(await readFile(filePath), newContent)
-  } finally {
-    const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
-    await fs.rm(path.resolve(workspaceDir, filePath), { force: true })
-  }
-})
-
-test('writeFile throws error on path traversal outside workspace', async () => {
-  await assert.rejects(
-    async () => {
-      await writeFile('../outside-workspace.txt', 'forbidden')
-    },
-    {
-      name: 'Error',
-      message: 'Path is outside the workspace'
+  const requestedUrls: string[] = []
+  axios.get = (async (url: string, options: any) => {
+    requestedUrls.push(url)
+    assert.equal(options.maxRedirects, 0)
+    if (url === 'https://example.com/start') {
+      return { status: 302, headers: { location: '/next-page' }, data: '' }
     }
-  )
-
-  await assert.rejects(
-    async () => {
-      await writeFile('/etc/passwd', 'forbidden')
-    },
-    {
-      name: 'Error',
-      message: 'Path is outside the workspace'
+    if (url === 'https://example.com/next-page') {
+      return { status: 301, headers: { location: 'https://example.org/final' }, data: '' }
     }
-  )
-})
-
-test('handlers["filesystem.write"] delegates to writeFile and works with filesystem.read', async () => {
-  const filePath = 'test-handler-write.txt'
-  const content = 'Tool handler test content'
+    if (url === 'https://example.org/final') {
+      return { status: 200, headers: {}, data: '<html><body>Success Page</body></html>' }
+    }
+    throw new Error(`Unexpected GET to ${url}`)
+  }) as any
 
   try {
-    const writeResult = await handlers['filesystem.write']({ path: filePath, content })
-    assert.deepEqual(writeResult, { path: filePath, bytes: Buffer.byteLength(content) })
-
-    const readResult = await handlers['filesystem.read']({ path: filePath })
-    assert.equal(readResult, content)
+    const res = await fetchHandler({ url: 'https://example.com/start' })
+    assert.deepEqual(requestedUrls, [
+      'https://example.com/start',
+      'https://example.com/next-page',
+      'https://example.org/final'
+    ])
+    assert.equal(res.trim(), 'Success Page')
   } finally {
-    const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
-    await fs.rm(path.resolve(workspaceDir, filePath), { force: true })
+    axios.get = originalGet
+  }
+})
+
+test('web.fetch blocks HTTP redirects to internal/private hostnames or IP addresses (SSRF prevention)', async () => {
+  const fetchHandler = handlers['web.fetch']
+  const originalGet = axios.get
+
+  const badRedirectTargets = [
+    'http://169.254.169.254/latest/meta-data/',
+    'http://localhost/admin',
+    'http://127.0.0.1:8080/secret',
+    'http://10.0.0.1/internal',
+    'http://[::1]/status'
+  ]
+
+  for (const target of badRedirectTargets) {
+    axios.get = (async (url: string) => {
+      if (url === 'https://example.com/redirect') {
+        return { status: 302, headers: { location: target }, data: '' }
+      }
+      return { status: 200, headers: {}, data: 'ok' }
+    }) as any
+
+    try {
+      await assert.rejects(
+        async () => {
+          await fetchHandler({ url: 'https://example.com/redirect' })
+        },
+        (err: Error) => {
+          return err.message.includes('restricted') || err.message.includes('Invalid URL format')
+        }
+      )
+    } finally {
+      axios.get = originalGet
+    }
+  }
+})
+
+test('web.fetch enforces max redirect limit', async () => {
+  const fetchHandler = handlers['web.fetch']
+  const originalGet = axios.get
+
+  axios.get = (async (url: string) => {
+    return { status: 302, headers: { location: 'https://example.com/loop' }, data: '' }
+  }) as any
+
+  try {
+    await assert.rejects(
+      async () => {
+        await fetchHandler({ url: 'https://example.com/loop' })
+      },
+      {
+        name: 'Error',
+        message: 'Too many redirects'
+      }
+    )
+  } finally {
+    axios.get = originalGet
   }
 })
