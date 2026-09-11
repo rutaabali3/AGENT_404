@@ -402,7 +402,7 @@ Note: All TODO comments are remarks for the agent (you), not for the user.
 
 `drizzle/schema.ts`
 ```ts
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { boolean, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -429,14 +429,28 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+/**
+ * Example todos table for application features.
+ */
+export const todos = mysqlTable("todos", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  completed: boolean("completed").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Todo = typeof todos.$inferSelect;
+export type InsertTodo = typeof todos.$inferInsert;
 ```
 
 `server/db.ts`
 ```ts
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, InsertTodo, Todo, todos, users } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -525,7 +539,42 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function getUserTodos(userId: number): Promise<Todo[]> {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot get todos: database not available");
+    return [];
+  }
+
+  return db.select().from(todos).where(eq(todos.userId, userId));
+}
+
+export async function createTodo(todo: InsertTodo): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  await db.insert(todos).values(todo);
+}
+
+export async function updateTodo(id: number, userId: number, updates: Partial<InsertTodo>): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  await db.update(todos).set(updates).where(and(eq(todos.id, id), eq(todos.userId, userId)));
+}
+
+export async function deleteTodo(id: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  await db.delete(todos).where(and(eq(todos.id, id), eq(todos.userId, userId)));
+}
 ```
 
 `server/routers.ts`
