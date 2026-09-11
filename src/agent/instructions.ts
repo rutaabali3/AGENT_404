@@ -114,13 +114,20 @@ export async function listSkillCatalog() {
 }
 
 export async function loadRelevantSkills(request: string, maxSkills = 4) {
-  const selected: string[] = []
-  for (const [pattern, skill] of keywordToSkill) if (pattern.test(request) && !selected.includes(skill)) selected.push(skill)
-  const skills = selected.slice(0, maxSkills)
-  const blocks = await Promise.all(skills.map(async skill => {
-    const body = await readCached(path.join(skillsRoot, skill, 'SKILL.md'))
-    return `## Skill: ${skill}\n${body}`
-  }))
+  if (maxSkills <= 0) return ''
+  const selected = new Set<string>()
+  for (const [pattern, skill] of keywordToSkill) {
+    if (pattern.test(request)) {
+      selected.add(skill)
+      if (selected.size >= maxSkills) break
+    }
+  }
+  const blocks = await Promise.all(
+    Array.from(selected).map(async skill => {
+      const body = await readCached(path.join(skillsRoot, skill, 'SKILL.md'))
+      return `## Skill: ${skill}\n${body}`
+    })
+  )
   return blocks.join('\n\n')
 }
 
