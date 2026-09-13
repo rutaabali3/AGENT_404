@@ -17,6 +17,8 @@ function createMockReqRes(options: {
   req.headers = options.headers ?? {}
   req.body = options.body
   req.query = {}
+  req.ip = '127.0.0.1'
+  req.socket = { remoteAddress: '127.0.0.1' }
 
   const resHeaders: Record<string, string> = {}
   let statusCode = 200
@@ -178,6 +180,20 @@ test('PATCH /api/tools/:name toggles tool status', async () => {
   const updatedTool = mock.getJson() as any
   assert.equal(updatedTool.name, 'web_search_tavily')
   assert.equal(updatedTool.enabled, true)
+})
+
+test('POST /api/chat includes rate limit headers from chatRateLimiter', async () => {
+  const store = new Store()
+  const app = createApp(store)
+  const mock = createMockReqRes({
+    method: 'POST',
+    url: '/api/chat',
+    body: { message: '' }
+  })
+  await dispatchRequest(app, mock)
+
+  assert.equal(mock.getStatus(), 400)
+  assert.ok(mock.getHeaders()['ratelimit-limit'] !== undefined || mock.getHeaders()['RateLimit-Limit'] !== undefined)
 })
 
 test('POST /api/chat delegates to handleChatRequest', async () => {
