@@ -182,10 +182,11 @@ export async function handleChatRequest(
       }
     }
   } catch (error: any) {
+    console.error('Chat request processing failed:', error)
     return {
       status: 500,
       body: {
-        error: error.message,
+        error: 'An internal error occurred while processing the chat request.',
         steps: allSteps
       }
     }
