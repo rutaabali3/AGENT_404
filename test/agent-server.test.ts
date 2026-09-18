@@ -17,6 +17,9 @@ function createMockReqRes(options: {
   req.headers = options.headers ?? {}
   req.body = options.body
   req.query = {}
+  req.ip = '127.0.0.1'
+  req.socket = { remoteAddress: '127.0.0.1' }
+  req.app = { get: (key: string) => (key === 'trust proxy fn' ? () => false : undefined) }
 
   const resHeaders: Record<string, string> = {}
   let statusCode = 200
