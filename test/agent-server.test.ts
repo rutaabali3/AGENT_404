@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
-import { createApp } from '../src/agent-server.js'
+import { createApp, chatRateLimiter } from '../src/agent-server.js'
 import { Store, ToolDoc, defaultTools } from '../src/agent/store.js'
 
 function createMockReqRes(options: {
@@ -17,6 +17,13 @@ function createMockReqRes(options: {
   req.headers = options.headers ?? {}
   req.body = options.body
   req.query = {}
+  req.ip = '127.0.0.1'
+  req.app = {
+    get(setting: string) {
+      if (setting === 'trust proxy fn') return () => false
+      return undefined
+    }
+  }
 
   const resHeaders: Record<string, string> = {}
   let statusCode = 200
@@ -26,10 +33,11 @@ function createMockReqRes(options: {
   const res = new EventEmitter() as any
   res.statusCode = 200
   res.setHeader = (name: string, value: string) => {
-    resHeaders[name] = value
-    resHeaders[name.toLowerCase()] = value
+    resHeaders[String(name)] = String(value)
+    resHeaders[String(name).toLowerCase()] = String(value)
     return res
   }
+  res.headersSent = false
   res.getHeader = (name: string) => resHeaders[name.toLowerCase()]
   res.status = (code: number) => {
     statusCode = code
@@ -63,6 +71,16 @@ function dispatchRequest(app: any, mock: ReturnType<typeof createMockReqRes>): P
     app(mock.req, mock.res, (err?: any) => {
       if (err) resolve()
     })
+    if (mock.req.body !== undefined) {
+      process.nextTick(() => {
+        mock.req.emit('data', Buffer.from(JSON.stringify(mock.req.body)))
+        mock.req.emit('end')
+      })
+    } else {
+      process.nextTick(() => {
+        mock.req.emit('end')
+      })
+    }
   })
 }
 
@@ -180,7 +198,7 @@ test('PATCH /api/tools/:name toggles tool status', async () => {
   assert.equal(updatedTool.enabled, true)
 })
 
-test('POST /api/chat delegates to handleChatRequest', async () => {
+test('POST /api/chat enforces rate limiting and delegates to handleChatRequest', async () => {
   const store = new Store()
   const app = createApp(store)
   const originalDeepseekKey = process.env.DEEPSEEK_API_KEY
@@ -196,6 +214,7 @@ test('POST /api/chat delegates to handleChatRequest', async () => {
 
     assert.equal(mockInvalid.getStatus(), 400)
     assert.equal(mockInvalid.getJson().error, 'Message is required')
+    assert.equal(mockInvalid.getHeaders()['ratelimit-limit'], '100')
 
     const mockValid = createMockReqRes({
       method: 'POST',
@@ -206,6 +225,7 @@ test('POST /api/chat delegates to handleChatRequest', async () => {
 
     assert.equal(mockValid.getStatus(), 200)
     assert.match(mockValid.getJson().message, /DeepSeek is not configured yet/)
+    assert.equal(mockValid.getHeaders()['ratelimit-limit'], '100')
   } finally {
     if (originalDeepseekKey !== undefined) {
       process.env.DEEPSEEK_API_KEY = originalDeepseekKey
