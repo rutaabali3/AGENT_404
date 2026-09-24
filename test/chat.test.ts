@@ -107,6 +107,36 @@ test('executeToolCall rejects invalid tool arguments schema', async () => {
   assert.match(result2.step.result.error, /Invalid arguments for tool read_file/)
 })
 
+test('executeToolCall handles malformed or missing JSON arguments by falling back to {}', async () => {
+  const store = new Store()
+  const enabledTools: ToolDoc[] = [
+    {
+      name: 'list_files',
+      description: 'List files in workspace',
+      category: 'filesystem',
+      enabled: true,
+      requires_sandbox: false,
+      parameters: { type: 'object', properties: {} },
+      handler: 'filesystem.list'
+    }
+  ]
+
+  const malformedCalls = [
+    { id: 'call_malformed_1', function: { name: 'list_files', arguments: '{ invalid json... ' } },
+    { id: 'call_malformed_2', function: { name: 'list_files', arguments: 'null' } },
+    { id: 'call_malformed_3', function: { name: 'list_files', arguments: '' } },
+    { id: 'call_malformed_4', function: { name: 'list_files' } },
+    { id: 'call_malformed_5', function: { name: 'list_files', arguments: undefined } }
+  ]
+
+  for (const call of malformedCalls) {
+    const result = await executeToolCall(call, enabledTools, store)
+    assert.equal(result.step.tool, 'list_files')
+    assert.equal(result.toolMessage.role, 'tool')
+    assert.equal(result.toolMessage.tool_call_id, call.id)
+  }
+})
+
 test('handleChatRequest returns 400 when message is empty', async () => {
   const store = new Store()
   const res = await handleChatRequest({ message: '   ' }, store)
