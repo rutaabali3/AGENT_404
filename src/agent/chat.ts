@@ -33,7 +33,11 @@ export async function buildChatMessages(userMessage: string, history?: any[]): P
   ]
 }
 
-export async function executeToolCall(call: any, enabledTools: ToolDoc[], store: Store) {
+export async function executeToolCall(
+  call: any,
+  enabledTools: ToolDoc[] | Map<string, ToolDoc>,
+  store: Store
+) {
   let args: any = {}
   try {
     args = JSON.parse(call.function?.arguments || '{}')
@@ -42,7 +46,9 @@ export async function executeToolCall(call: any, enabledTools: ToolDoc[], store:
   }
 
   const toolName = call.function?.name
-  const tool = enabledTools.find(candidate => candidate.name === toolName) ?? (await store.getTool(toolName))
+  const tool = enabledTools instanceof Map
+    ? (enabledTools.get(toolName) ?? (await store.getTool(toolName)))
+    : (enabledTools.find(candidate => candidate.name === toolName) ?? (await store.getTool(toolName)))
   if (!tool) {
     throw new Error(`Tool ${toolName} is not registered`)
   }
@@ -108,6 +114,7 @@ export async function handleChatRequest(
   }
 
   const enabled = (await store.tools()).filter(t => t.enabled)
+  const toolsMap = new Map(enabled.map(t => [t.name, t]))
   const formattedTools = toolSchemas(enabled)
   const messages = await buildChatMessages(userMessage, reqBody.history)
   const allSteps: any[] = []
@@ -155,8 +162,23 @@ export async function handleChatRequest(
         }
       }
 
+      const rawNames: string[] = message.tool_calls
+        .map((c: any) => c.function?.name)
+        .filter((name: unknown): name is string => typeof name === 'string' && name.length > 0 && !toolsMap.has(name))
+      const missingNames = Array.from(new Set(rawNames))
+      if (missingNames.length > 0) {
+        await Promise.all(
+          missingNames.map(async (name) => {
+            const tool = await store.getTool(name)
+            if (tool) {
+              toolsMap.set(name, tool)
+            }
+          })
+        )
+      }
+
       const toolResults = await Promise.all(
-        message.tool_calls.map((call: any) => executeToolCall(call, enabled, store))
+        message.tool_calls.map((call: any) => executeToolCall(call, toolsMap, store))
       )
       for (const { step, toolMessage } of toolResults) {
         allSteps.push(step)
