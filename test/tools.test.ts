@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
+import axios from 'axios'
+import { runTool, toolSchemas, handlers, readFile, writeFile, listFiles } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
 
 const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
@@ -294,6 +295,80 @@ test('web.fetch follows safe redirects and resolves relative location headers', 
     assert.equal(res.trim(), 'Success Page')
   } finally {
     axios.get = originalGet
+  }
+})
+
+test('readFile and writeFile reject symbolic links pointing outside the workspace', async () => {
+  await fs.mkdir(workspaceDir, { recursive: true })
+  const outsideFile = path.resolve(workspaceDir, '../outside-test-secret.txt')
+  await fs.writeFile(outsideFile, 'secret content', 'utf8')
+
+  const symlinkPath = path.join(workspaceDir, 'symlink-outside.txt')
+  const symlinkDirPath = path.join(workspaceDir, 'symlink-outside-dir')
+  const outsideDir = path.resolve(workspaceDir, '..')
+
+  try {
+    await fs.symlink(outsideFile, symlinkPath)
+    await fs.symlink(outsideDir, symlinkDirPath)
+
+    await assert.rejects(
+      async () => {
+        await readFile('symlink-outside.txt')
+      },
+      {
+        name: 'Error',
+        message: 'Path is outside the workspace'
+      }
+    )
+
+    await assert.rejects(
+      async () => {
+        await writeFile('symlink-outside.txt', 'overwrite attempt')
+      },
+      {
+        name: 'Error',
+        message: 'Path is outside the workspace'
+      }
+    )
+
+    await assert.rejects(
+      async () => {
+        await writeFile('symlink-outside-dir/escaped.txt', 'write escaped')
+      },
+      {
+        name: 'Error',
+        message: 'Path is outside the workspace'
+      }
+    )
+  } finally {
+    await fs.rm(symlinkPath, { force: true })
+    await fs.rm(symlinkDirPath, { force: true })
+    await fs.rm(outsideFile, { force: true })
+  }
+})
+
+test('readFile and writeFile allow symbolic links pointing within the workspace', async () => {
+  await fs.mkdir(workspaceDir, { recursive: true })
+  const internalSubdir = path.join(workspaceDir, 'internal-dir')
+  await fs.mkdir(internalSubdir, { recursive: true })
+
+  const targetFile = path.join(internalSubdir, 'target.txt')
+  await fs.writeFile(targetFile, 'inside workspace', 'utf8')
+
+  const symlinkPath = path.join(workspaceDir, 'symlink-internal.txt')
+
+  try {
+    await fs.symlink(targetFile, symlinkPath)
+
+    const content = await readFile('symlink-internal.txt')
+    assert.equal(content, 'inside workspace')
+
+    await writeFile('symlink-internal.txt', 'updated inside')
+    const updated = await readFile('symlink-internal.txt')
+    assert.equal(updated, 'updated inside')
+  } finally {
+    await fs.rm(symlinkPath, { force: true })
+    await fs.rm(internalSubdir, { recursive: true, force: true })
   }
 })
 
