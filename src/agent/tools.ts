@@ -107,10 +107,33 @@ export async function assertSafeUrl(urlString: string): Promise<void> {
     throw new Error(`DNS resolution failed for host: ${hostname}`)
   }
 }
-async function safeFile(p = '') { const resolved = path.resolve(root, p); if (resolved !== root && !resolved.startsWith(root + path.sep)) throw new Error('Path is outside the workspace'); return resolved }
-export async function listFiles() { await fs.mkdir(root, { recursive: true }); return (await fs.readdir(root, { withFileTypes: true })).map(x => ({ name: x.name, type: x.isDirectory() ? 'directory' : 'file' })) }
-export async function readFile(p: string) { return await fs.readFile(await safeFile(p), 'utf8') }
-export async function writeFile(p: string, content: string) { const f = await safeFile(p); await fs.mkdir(path.dirname(f), { recursive: true }); await fs.writeFile(f, content, 'utf8'); return { path: p, bytes: Buffer.byteLength(content) } }
+async function safeFile(p = '') {
+  const resolved = path.resolve(root, p)
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    throw new Error('Path is outside the workspace')
+  }
+  return resolved
+}
+
+export async function listFiles() {
+  await fs.mkdir(root, { recursive: true })
+  const entries = await fs.readdir(root, { withFileTypes: true })
+  return entries.map(x => ({
+    name: x.name,
+    type: x.isDirectory() ? 'directory' : 'file',
+  }))
+}
+
+export async function readFile(p: string) {
+  return await fs.readFile(await safeFile(p), 'utf8')
+}
+
+export async function writeFile(p: string, content: string) {
+  const f = await safeFile(p)
+  await fs.mkdir(path.dirname(f), { recursive: true })
+  await fs.writeFile(f, content, 'utf8')
+  return { path: p, bytes: Buffer.byteLength(content) }
+}
 async function dockerRun(language: 'python' | 'node', code: string) {
   const host = path.resolve(process.cwd(), 'sandbox')
   const work = path.join(host, 'workspace')
@@ -172,9 +195,15 @@ async function dockerRun(language: 'python' | 'node', code: string) {
   }
 }
 export const handlers: Record<string, (args: any) => Promise<any>> = {
-  'filesystem.list': async () => listFiles(), 'filesystem.read': async a => readFile(a.path), 'filesystem.write': async a => writeFile(a.path, a.content),
-  'files.convertToPdf': async a => convertToPdf(a), 'files.generateDocx': async a => generateDocx(a), 'files.generateXlsx': async a => generateXlsx(a), 'files.generatePptx': async a => generatePptx(a),
-  'sandbox.executePython': async a => dockerRun('python', a.code), 'sandbox.executeNode': async a => dockerRun('node', a.code),
+  'filesystem.list': async () => listFiles(),
+  'filesystem.read': async (a) => readFile(a.path),
+  'filesystem.write': async (a) => writeFile(a.path, a.content),
+  'files.convertToPdf': async (a) => convertToPdf(a),
+  'files.generateDocx': async (a) => generateDocx(a),
+  'files.generateXlsx': async (a) => generateXlsx(a),
+  'files.generatePptx': async (a) => generatePptx(a),
+  'sandbox.executePython': async (a) => dockerRun('python', a.code),
+  'sandbox.executeNode': async (a) => dockerRun('node', a.code),
   'web.searchSearxng': async (a) => {
     const url = process.env.SEARXNG_URL ?? 'http://localhost:8080'
     try {
@@ -198,12 +227,104 @@ export const handlers: Record<string, (args: any) => Promise<any>> = {
       return { provider: 'tavily-fallback', results: data }
     }
   },
-  'web.searchTavily': async a => { if (!process.env.TAVILY_API_KEY) return { error: 'TAVILY_API_KEY is not configured' }; const { data } = await axios.post('https://api.tavily.com/search', { api_key: process.env.TAVILY_API_KEY, query: a.query, max_results: 5 }, { timeout: 10000 }); return data },
-  'web.fetch': async a => {
-    await assertSafeUrl(a.url); const { data } = await axios.get(a.url, { timeout: 15000, responseType: 'text', maxContentLength: 5 * 1024 * 1024, maxBodyLength: 5 * 1024 * 1024 }); return String(data).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 20000)
+  'web.searchTavily': async (a) => {
+    if (!process.env.TAVILY_API_KEY) {
+      return { error: 'TAVILY_API_KEY is not configured' }
+    }
+    const { data } = await axios.post(
+      'https://api.tavily.com/search',
+      { api_key: process.env.TAVILY_API_KEY, query: a.query, max_results: 5 },
+      { timeout: 10000 }
+    )
+    return data
   },
-  'media.downloadVideo': async a => { await assertSafeUrl(a?.url ?? ''); const outputDir = path.resolve(process.env.OUTPUTS_DIR ?? './sandbox/outputs'); await fs.mkdir(outputDir, { recursive: true }); const template = path.join(outputDir, '%(title).100s.%(ext)s'); try { const { stdout, stderr } = await exec('yt-dlp', ['--no-playlist', '-o', template, '--', a.url], { maxBuffer: 1024 * 1024 }); return { provider: 'yt-dlp', stdout, stderr, outputs: await fs.readdir(outputDir) } } catch (error: any) { return { error: `yt-dlp unavailable or download failed: ${error.message}`, hint: 'Install yt-dlp locally to enable download_video.' } } },
+  'web.fetch': async (a) => {
+    let currentUrl = a.url
+    let redirects = 0
+    let data: any
+
+    while (true) {
+      await assertSafeUrl(currentUrl)
+      const res = await axios.get(currentUrl, {
+        timeout: 15000,
+        responseType: 'text',
+        maxContentLength: 5 * 1024 * 1024,
+        maxBodyLength: 5 * 1024 * 1024,
+        maxRedirects: 0,
+        validateStatus: (status) => status >= 200 && status < 400,
+      })
+
+      if (res.status >= 300 && res.status < 400 && res.headers?.location) {
+        redirects++
+        if (redirects > 5) {
+          throw new Error('Too many redirects')
+        }
+        currentUrl = new URL(res.headers.location, currentUrl).toString()
+        continue
+      }
+
+      data = res.data
+      break
+    }
+
+    return String(data ?? '')
+      .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .slice(0, 20000)
+  },
+  'media.downloadVideo': async (a) => {
+    await assertSafeUrl(a?.url ?? '')
+    const outputDir = path.resolve(process.env.OUTPUTS_DIR ?? './sandbox/outputs')
+    await fs.mkdir(outputDir, { recursive: true })
+    const template = path.join(outputDir, '%(title).100s.%(ext)s')
+    try {
+      const { stdout, stderr } = await exec(
+        'yt-dlp',
+        ['--no-playlist', '-o', template, '--', a.url],
+        { maxBuffer: 1024 * 1024 }
+      )
+      return {
+        provider: 'yt-dlp',
+        stdout,
+        stderr,
+        outputs: await fs.readdir(outputDir),
+      }
+    } catch (error: any) {
+      return {
+        error: `yt-dlp unavailable or download failed: ${error.message}`,
+        hint: 'Install yt-dlp locally to enable download_video.',
+      }
+    }
+  },
 }
-for (const tool of defaultTools.filter(t => t.handler.startsWith('ahm7.'))) handlers[tool.handler] = async () => ({ error: 'AHM7 integration is registered but not configured in this local build.' })
-export function toolSchemas(tools: ToolDoc[]) { return tools.filter(t => t.enabled).map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })) }
-export async function runTool(tool: ToolDoc, args: any) { if (!tool.enabled) throw new Error(`Tool ${tool.name} is disabled`); const handler = handlers[tool.handler]; if (!handler) throw new Error(`No handler for ${tool.name} (${tool.handler})`); return handler(args) }
+
+for (const tool of defaultTools.filter((t) => t.handler.startsWith('ahm7.'))) {
+  handlers[tool.handler] = async () => ({
+    error: 'AHM7 integration is registered but not configured in this local build.',
+  })
+}
+
+export function toolSchemas(tools: ToolDoc[]) {
+  return tools
+    .filter((t) => t.enabled)
+    .map((t) => ({
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      },
+    }))
+}
+
+export async function runTool(tool: ToolDoc, args: any) {
+  if (!tool.enabled) {
+    throw new Error(`Tool ${tool.name} is disabled`)
+  }
+  const handler = handlers[tool.handler]
+  if (!handler) {
+    throw new Error(`No handler for ${tool.name} (${tool.handler})`)
+  }
+  return handler(args)
+}
