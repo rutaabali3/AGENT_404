@@ -7,6 +7,7 @@ import pptxgenModule from 'pptxgenjs'
 const PptxGenJS: any = pptxgenModule as any
 
 const outputs = path.resolve(process.env.OUTPUTS_DIR ?? './sandbox/outputs')
+const HEADING_REGEX = /^(#{1,3})\s+(.+)$/
 
 function outputPath(filename: string, extension: string) {
   const raw = String(filename || `agent-output.${extension}`).replace(/\\/g, '/')
@@ -39,7 +40,7 @@ export async function convertToPdf(args: { content: string; filename?: string })
   })
 
   for (const line of lines(args.content)) {
-    const heading = /^(#{1,3})\s+(.+)$/.exec(line)
+    const heading = HEADING_REGEX.exec(line)
     if (heading) {
       doc.fontSize(heading[1].length === 1 ? 20 : 15)
          .font('Helvetica-Bold')
@@ -62,7 +63,7 @@ export async function convertToPdf(args: { content: string; filename?: string })
 export async function generateDocx(args: { content: string; filename?: string }) {
   const target = await prepareOutputFile(args.filename, 'docx')
   const children = lines(args.content).map(line => {
-    const heading = /^(#{1,3})\s+(.+)$/.exec(line)
+    const heading = HEADING_REGEX.exec(line)
     return new Paragraph({
       text: heading ? heading[2] : line,
       heading: heading
