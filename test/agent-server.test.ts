@@ -94,6 +94,31 @@ test('GET /api/health returns health status and security headers', async () => {
   }
 })
 
+test('POST /api/chat applies rate limiting headers via chatRateLimiter', async () => {
+  const store = new Store()
+  const app = createApp(store)
+
+  const server = app.listen(0)
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to start test server')
+  }
+  const port = address.port
+
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: '' })
+    })
+
+    assert.equal(res.status, 400)
+    assert.ok(res.headers.has('ratelimit-limit'))
+  } finally {
+    server.close()
+  }
+})
+
 test('GET /api/health reflects MONGODB_URI presence', async () => {
   const originalDbUri = process.env.MONGODB_URI
   process.env.MONGODB_URI = 'mongodb://localhost:27017/test_db'
@@ -186,27 +211,35 @@ test('POST /api/chat delegates to handleChatRequest', async () => {
   const originalDeepseekKey = process.env.DEEPSEEK_API_KEY
   delete process.env.DEEPSEEK_API_KEY
 
+  const server = app.listen(0)
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to start test server')
+  }
+  const port = address.port
+
   try {
-    const mockInvalid = createMockReqRes({
+    const resInvalid = await fetch(`http://127.0.0.1:${port}/api/chat`, {
       method: 'POST',
-      url: '/api/chat',
-      body: { message: '' }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: '' })
     })
-    await dispatchRequest(app, mockInvalid)
 
-    assert.equal(mockInvalid.getStatus(), 400)
-    assert.equal(mockInvalid.getJson().error, 'Message is required')
+    assert.equal(resInvalid.status, 400)
+    const jsonInvalid = await resInvalid.json()
+    assert.equal(jsonInvalid.error, 'Message is required')
 
-    const mockValid = createMockReqRes({
+    const resValid = await fetch(`http://127.0.0.1:${port}/api/chat`, {
       method: 'POST',
-      url: '/api/chat',
-      body: { message: 'Hello agent' }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Hello agent' })
     })
-    await dispatchRequest(app, mockValid)
 
-    assert.equal(mockValid.getStatus(), 200)
-    assert.match(mockValid.getJson().message, /DeepSeek is not configured yet/)
+    assert.equal(resValid.status, 200)
+    const jsonValid = await resValid.json()
+    assert.match(jsonValid.message, /DeepSeek is not configured yet/)
   } finally {
+    server.close()
     if (originalDeepseekKey !== undefined) {
       process.env.DEEPSEEK_API_KEY = originalDeepseekKey
     }
