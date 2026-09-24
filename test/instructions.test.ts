@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { listSkillCatalog, loadRules, loadRelevantSkills, clearInstructionsCache } from '../src/agent/instructions.js'
+import { listSkillCatalog, loadRules, loadRelevantSkills, clearInstructionsCache, localCompatibilityNotice } from '../src/agent/instructions.js'
 
 test('listSkillCatalog loads skills catalog concurrently and caches output', async () => {
   const catalog = await listSkillCatalog()
@@ -73,6 +73,13 @@ test('clearInstructionsCache clears memory cache', async () => {
   clearInstructionsCache()
   const relevant = await loadRelevantSkills('pdf')
   assert.ok(relevant.includes('pdf'))
+})
+
+test('localCompatibilityNotice returns local agent runtime notice', () => {
+  const notice = localCompatibilityNotice()
+  assert.ok(typeof notice === 'string' && notice.length > 0)
+  assert.ok(notice.includes('AGENT-420 runtime'))
+  assert.ok(notice.includes('guidance only'))
 })
 
 test('loadRelevantSkills handles malformed JSON response from LLM and falls back to keyword matching', async () => {
