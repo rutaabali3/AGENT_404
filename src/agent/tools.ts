@@ -9,7 +9,7 @@ import { convertToPdf, generateDocx, generateXlsx, generatePptx } from './genera
 const exec = promisify(execFile)
 const root = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
 
-function isPrivateIp(ip: string): boolean {
+export function isPrivateIp(ip: string): boolean {
   // Normalize IPv4-mapped IPv6 addresses like ::ffff:127.0.0.1
   const normalized = ip.toLowerCase()
   if (normalized.startsWith('::ffff:')) {
