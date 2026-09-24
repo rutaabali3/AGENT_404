@@ -59,8 +59,9 @@ export async function executeToolCall(call: any, enabledTools: ToolDoc[], store:
       }
     }
     result = await runTool(tool, args)
-  } catch (error: any) {
-    result = { error: error.message }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    result = { error: message }
   }
 
   const skill = await loadSkillForTool(tool.name)
@@ -181,11 +182,12 @@ export async function handleChatRequest(
         steps: allSteps
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
     return {
       status: 500,
       body: {
-        error: error.message,
+        error: message,
         steps: allSteps
       }
     }
