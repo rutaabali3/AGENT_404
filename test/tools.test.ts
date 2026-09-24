@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
+import axios from 'axios'
+import { runTool, toolSchemas, handlers, readFile, writeFile, listFiles, assertSafeUrl } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
 
 const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
@@ -295,6 +296,64 @@ test('web.fetch follows safe redirects and resolves relative location headers', 
   } finally {
     axios.get = originalGet
   }
+})
+
+test('assertSafeUrl validates URL format, protocol, restricted hostnames, private IPs, and DNS', async () => {
+  // Invalid URL format
+  await assert.rejects(async () => await assertSafeUrl('invalid-url-string'), {
+    message: 'Invalid URL format'
+  })
+
+  // Disallowed protocol
+  await assert.rejects(async () => await assertSafeUrl('ftp://example.com'), {
+    message: 'Only http and https protocols are allowed'
+  })
+
+  // Restricted local or internal hostnames
+  const restrictedHosts = [
+    'http://localhost',
+    'http://app.localhost',
+    'http://server.local',
+    'http://service.internal',
+    'http://[::1]',
+    'http://[fe80::1]',
+    'http://[fc00::1]',
+    'http://[fd00::1]',
+    'http://[::ffff:127.0.0.1]'
+  ]
+
+  for (const url of restrictedHosts) {
+    await assert.rejects(async () => await assertSafeUrl(url), {
+      message: 'Access to local or internal network host is restricted'
+    })
+  }
+
+  // Private / local IP representations
+  const restrictedIps = [
+    'http://0',
+    'http://0x7f000001',
+    'http://2130706433',
+    'http://127.0.0.1',
+    'http://10.0.0.1',
+    'http://172.16.0.1',
+    'http://192.168.1.1',
+    'http://169.254.169.254'
+  ]
+
+  for (const url of restrictedIps) {
+    await assert.rejects(async () => await assertSafeUrl(url), {
+      message: 'Access to private or local IP address is restricted'
+    })
+  }
+
+  // Valid public URL
+  await assert.doesNotReject(async () => await assertSafeUrl('https://example.com'))
+
+  // DNS resolution failure
+  const nonExistentHost = 'non-existent-domain-for-assertsafeurl-test.invalid'
+  await assert.rejects(async () => await assertSafeUrl(`http://${nonExistentHost}`), {
+    message: `DNS resolution failed for host: ${nonExistentHost}`
+  })
 })
 
 test('web.fetch blocks HTTP redirects to internal/private hostnames or IP addresses (SSRF prevention)', async () => {

@@ -52,7 +52,7 @@ function isPrivateIp(ip: string): boolean {
   return false
 }
 
-export async function assertSafeUrl(urlString: string): Promise<void> {
+function parseAndValidateUrl(urlString: string): URL {
   let parsed: URL
   try {
     parsed = new URL(urlString)
@@ -62,7 +62,10 @@ export async function assertSafeUrl(urlString: string): Promise<void> {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('Only http and https protocols are allowed')
   }
-  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  return parsed
+}
+
+function assertNotRestrictedHost(hostname: string): void {
   if (
     hostname === 'localhost' ||
     hostname.endsWith('.localhost') ||
@@ -84,6 +87,9 @@ export async function assertSafeUrl(urlString: string): Promise<void> {
       throw new Error('Access to local or internal network host is restricted')
     }
   }
+}
+
+function assertNotPrivateIpLiteral(hostname: string): void {
   if (hostname === '0' || /^0x[0-9a-f]+$/i.test(hostname) || /^\d+$/.test(hostname)) {
     throw new Error('Access to private or local IP address is restricted')
   }
@@ -91,8 +97,9 @@ export async function assertSafeUrl(urlString: string): Promise<void> {
   if (isPrivateIp(hostname)) {
     throw new Error('Access to private or local IP address is restricted')
   }
+}
 
-  // Perform DNS resolution and validate all returned IP addresses
+async function assertSafeDnsResolution(hostname: string): Promise<void> {
   try {
     const addresses = await dns.lookup(hostname, { all: true })
     for (const record of addresses) {
@@ -106,6 +113,15 @@ export async function assertSafeUrl(urlString: string): Promise<void> {
     }
     throw new Error(`DNS resolution failed for host: ${hostname}`)
   }
+}
+
+export async function assertSafeUrl(urlString: string): Promise<void> {
+  const parsed = parseAndValidateUrl(urlString)
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+
+  assertNotRestrictedHost(hostname)
+  assertNotPrivateIpLiteral(hostname)
+  await assertSafeDnsResolution(hostname)
 }
 async function safeFile(p = '') { const resolved = path.resolve(root, p); if (resolved !== root && !resolved.startsWith(root + path.sep)) throw new Error('Path is outside the workspace'); return resolved }
 export async function listFiles() { await fs.mkdir(root, { recursive: true }); return (await fs.readdir(root, { withFileTypes: true })).map(x => ({ name: x.name, type: x.isDirectory() ? 'directory' : 'file' })) }
