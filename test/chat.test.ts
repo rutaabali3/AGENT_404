@@ -1,6 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import _Ajv from 'ajv'
 import { buildSystemPrompt, buildChatMessages, executeToolCall, handleChatRequest } from '../src/agent/chat.js'
+
+const Ajv = _Ajv.default || _Ajv
 import { toolSchemas } from '../src/agent/tools.js'
 import { Store, ToolDoc } from '../src/agent/store.js'
 import { handlers } from '../src/agent/tools.js'
@@ -161,4 +164,75 @@ test('toolSchemas performance in loop benchmark', async () => {
   console.log(`  Speedup: ${(durationOld / durationNew).toFixed(1)}x faster`)
 
   assert.ok(durationNew < durationOld)
+})
+
+test('benchmark Ajv parameter schema compilation caching', async () => {
+  const store = new Store()
+  const toolWithSchema: ToolDoc = {
+    name: 'search_data',
+    description: 'Search data with params',
+    category: 'test',
+    enabled: true,
+    requires_sandbox: false,
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', minLength: 1 },
+        limit: { type: 'number', minimum: 1, maximum: 100 },
+        filters: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              field: { type: 'string' },
+              value: { type: 'string' }
+            },
+            required: ['field', 'value']
+          }
+        }
+      },
+      required: ['query']
+    },
+    handler: 'filesystem.list'
+  }
+
+  const call = {
+    id: 'call_bench',
+    function: {
+      name: 'search_data',
+      arguments: JSON.stringify({
+        query: 'test search',
+        limit: 10,
+        filters: [{ field: 'category', value: 'books' }]
+      })
+    }
+  }
+
+  const iterations = 1000
+
+  // Pure validation benchmark
+  const args = JSON.parse(call.function.arguments)
+
+  // Uncached: ajv.compile on every tool call
+  const startUncached = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    const validate = new Ajv().compile(toolWithSchema.parameters)
+    validate(args)
+  }
+  const durationUncached = performance.now() - startUncached
+
+  // Cached: reusing compiled validator
+  const compiled = new Ajv().compile(toolWithSchema.parameters)
+  const startCached = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    compiled(args)
+  }
+  const durationCached = performance.now() - startCached
+
+  console.log(`Benchmark Ajv parameter schema compilation (${iterations} ops):`)
+  console.log(`  Uncached ajv.compile per call: ${durationUncached.toFixed(2)} ms`)
+  console.log(`  Cached validator reuse: ${durationCached.toFixed(2)} ms`)
+  console.log(`  Speedup: ${(durationUncached / durationCached).toFixed(1)}x faster`)
+
+  assert.ok(durationCached < durationUncached)
 })
