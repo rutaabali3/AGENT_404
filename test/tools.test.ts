@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
+import axios from 'axios'
+import { runTool, toolSchemas, handlers, readFile, writeFile, listFiles } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
 
 const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
@@ -294,6 +295,24 @@ test('web.fetch follows safe redirects and resolves relative location headers', 
     assert.equal(res.trim(), 'Success Page')
   } finally {
     axios.get = originalGet
+  }
+})
+
+test('media.downloadVideo rejects non-string url inputs', async () => {
+  const downloadVideoHandler = handlers['media.downloadVideo']
+
+  const invalidInputs = [{}, { url: null }, { url: 123 }, { url: [] }, { url: undefined }]
+
+  for (const input of invalidInputs) {
+    await assert.rejects(
+      async () => {
+        await downloadVideoHandler(input)
+      },
+      {
+        name: 'Error',
+        message: 'Invalid URL format'
+      }
+    )
   }
 })
 
