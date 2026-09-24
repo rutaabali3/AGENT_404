@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
+import axios from 'axios'
+import { runTool, toolSchemas, handlers, listFiles, readFile, writeFile, isPrivateIp } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
 
 const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
@@ -228,6 +229,67 @@ test('readFile rejects non-existent files with ENOENT error', async () => {
       return err.code === 'ENOENT'
     }
   )
+})
+
+test('isPrivateIp correctly identifies private, loopback, link-local, and public IP addresses', () => {
+  // IPv4 Loopback (127.0.0.0/8)
+  assert.equal(isPrivateIp('127.0.0.1'), true)
+  assert.equal(isPrivateIp('127.255.255.255'), true)
+
+  // IPv4 Private Class A (10.0.0.0/8)
+  assert.equal(isPrivateIp('10.0.0.1'), true)
+  assert.equal(isPrivateIp('10.255.255.255'), true)
+
+  // IPv4 Unspecified / Default (0.0.0.0/8)
+  assert.equal(isPrivateIp('0.0.0.0'), true)
+  assert.equal(isPrivateIp('0.1.2.3'), true)
+
+  // IPv4 Private Class B (172.16.0.0/12)
+  assert.equal(isPrivateIp('172.16.0.1'), true)
+  assert.equal(isPrivateIp('172.31.255.255'), true)
+  assert.equal(isPrivateIp('172.15.255.255'), false)
+  assert.equal(isPrivateIp('172.32.0.0'), false)
+
+  // IPv4 Private Class C (192.168.0.0/16)
+  assert.equal(isPrivateIp('192.168.0.1'), true)
+  assert.equal(isPrivateIp('192.168.255.255'), true)
+  assert.equal(isPrivateIp('192.169.0.1'), false)
+
+  // IPv4 Link-local / Metadata (169.254.0.0/16)
+  assert.equal(isPrivateIp('169.254.169.254'), true)
+  assert.equal(isPrivateIp('169.254.1.1'), true)
+
+  // IPv4 Public
+  assert.equal(isPrivateIp('8.8.8.8'), false)
+  assert.equal(isPrivateIp('1.1.1.1'), false)
+  assert.equal(isPrivateIp('142.250.190.46'), false)
+
+  // IPv6 Loopback and Unspecified
+  assert.equal(isPrivateIp('::1'), true)
+  assert.equal(isPrivateIp('::'), true)
+
+  // IPv6 Link-local (fe80::/10)
+  assert.equal(isPrivateIp('fe80::1'), true)
+  assert.equal(isPrivateIp('fe80::abc:1234'), true)
+
+  // IPv6 Unique Local (fc00::/7 - fc and fd prefixes)
+  assert.equal(isPrivateIp('fc00::1'), true)
+  assert.equal(isPrivateIp('fd00::1'), true)
+  assert.equal(isPrivateIp('fd12:3456:789a:1::1'), true)
+
+  // IPv6 Public
+  assert.equal(isPrivateIp('2001:db8::1'), false)
+  assert.equal(isPrivateIp('2607:f8b0:4005:805::200e'), false)
+
+  // IPv4-mapped IPv6 addresses
+  assert.equal(isPrivateIp('::ffff:127.0.0.1'), true)
+  assert.equal(isPrivateIp('::ffff:10.0.0.1'), true)
+  assert.equal(isPrivateIp('::FFFF:192.168.1.1'), true)
+  assert.equal(isPrivateIp('::ffff:8.8.8.8'), false)
+
+  // Invalid or non-IP strings
+  assert.equal(isPrivateIp('example.com'), false)
+  assert.equal(isPrivateIp('not-an-ip'), false)
 })
 
 test('toolSchemas filters disabled tools and maps enabled tools to OpenAI/DeepSeek function format', () => {
