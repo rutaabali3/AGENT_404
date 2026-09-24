@@ -12,6 +12,41 @@ import {
 const Ajv = _Ajv.default || _Ajv
 const ajv = new Ajv()
 
+export interface ChatCompletionToolCall {
+  id: string
+  type?: string
+  function: {
+    name: string
+    arguments: string
+  }
+}
+
+export interface ChatCompletionMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool'
+  content?: string | null
+  tool_calls?: ChatCompletionToolCall[]
+  tool_call_id?: string
+}
+
+export interface ChatCompletionChoice {
+  index?: number
+  message?: ChatCompletionMessage
+  finish_reason?: string
+}
+
+export interface ChatCompletionResponse {
+  id?: string
+  object?: string
+  created?: number
+  model?: string
+  choices?: ChatCompletionChoice[]
+  usage?: {
+    prompt_tokens?: number
+    completion_tokens?: number
+    total_tokens?: number
+  }
+}
+
 export async function buildSystemPrompt(userMessage: string): Promise<string> {
   const rules = await loadRules()
   const relevantSkills = await loadRelevantSkills(userMessage)
@@ -33,7 +68,7 @@ export async function buildChatMessages(userMessage: string, history?: any[]): P
   ]
 }
 
-export async function executeToolCall(call: any, enabledTools: ToolDoc[], store: Store) {
+export async function executeToolCall(call: ChatCompletionToolCall, enabledTools: ToolDoc[], store: Store) {
   let args: any = {}
   try {
     args = JSON.parse(call.function?.arguments || '{}')
@@ -136,7 +171,7 @@ export async function handleChatRequest(
         throw new Error(`DeepSeek HTTP ${response.status}: ${await response.text()}`)
       }
 
-      const data: any = await response.json()
+      const data = (await response.json()) as ChatCompletionResponse
       const message = data.choices?.[0]?.message
       if (!message) {
         throw new Error('DeepSeek returned no message')
@@ -156,7 +191,7 @@ export async function handleChatRequest(
       }
 
       const toolResults = await Promise.all(
-        message.tool_calls.map((call: any) => executeToolCall(call, enabled, store))
+        message.tool_calls.map((call: ChatCompletionToolCall) => executeToolCall(call, enabled, store))
       )
       for (const { step, toolMessage } of toolResults) {
         allSteps.push(step)
