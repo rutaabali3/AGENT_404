@@ -66,6 +66,29 @@ test('executeToolCall runs registered tool and logs tool call', async () => {
   assert.equal(result.toolMessage.tool_call_id, 'call_123')
 })
 
+test('executeToolCall throws error when tool is not registered', async () => {
+  const store = new Store()
+  const enabledTools: ToolDoc[] = []
+
+  const call = {
+    id: 'call_999',
+    function: {
+      name: 'nonexistent_tool',
+      arguments: '{}'
+    }
+  }
+
+  await assert.rejects(
+    async () => {
+      await executeToolCall(call, enabledTools, store)
+    },
+    {
+      name: 'Error',
+      message: 'Tool nonexistent_tool is not registered'
+    }
+  )
+})
+
 test('executeToolCall rejects invalid tool arguments schema', async () => {
   const store = new Store()
   const enabledTools: ToolDoc[] = [
