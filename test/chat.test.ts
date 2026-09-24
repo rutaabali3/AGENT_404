@@ -162,3 +162,35 @@ test('toolSchemas performance in loop benchmark', async () => {
 
   assert.ok(durationNew < durationOld)
 })
+
+test('executeToolCall works with Map and Array for backward compatibility', async () => {
+  const store = new Store()
+  const enabledTools: ToolDoc[] = [
+    {
+      name: 'list_files',
+      description: 'List files in workspace',
+      category: 'filesystem',
+      enabled: true,
+      requires_sandbox: false,
+      parameters: { type: 'object', properties: {} },
+      handler: 'filesystem.list'
+    }
+  ]
+
+  const call = {
+    id: 'call_map_123',
+    function: {
+      name: 'list_files',
+      arguments: '{}'
+    }
+  }
+
+  // Array support
+  const res1 = await executeToolCall(call, enabledTools, store)
+  assert.equal(res1.step.tool, 'list_files')
+
+  // Map support
+  const toolsMap = new Map(enabledTools.map(t => [t.name, t]))
+  const res2 = await executeToolCall(call, toolsMap, store)
+  assert.equal(res2.step.tool, 'list_files')
+})
