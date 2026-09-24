@@ -114,18 +114,35 @@ test('handleChatRequest returns 400 when message is empty', async () => {
   assert.equal(res.body.error, 'Message is required')
 })
 
-test('handleChatRequest returns unconfigured message when DEEPSEEK_API_KEY is not set', async () => {
+test('handleChatRequest returns unconfigured message when DEEPSEEK_API_KEY is not set or empty string', async () => {
   const store = new Store()
   const originalKey = process.env.DEEPSEEK_API_KEY
-  delete process.env.DEEPSEEK_API_KEY
+
   try {
-    const res = await handleChatRequest({ message: 'hello' }, store)
-    assert.equal(res.status, 200)
-    assert.match(res.body.message, /DeepSeek is not configured yet/)
-    assert.deepEqual(res.body.steps, [])
+    // Case 1: DEEPSEEK_API_KEY is undefined (deleted)
+    delete process.env.DEEPSEEK_API_KEY
+    const resUndefined = await handleChatRequest({ message: 'hello' }, store)
+    assert.equal(resUndefined.status, 200)
+    assert.equal(
+      resUndefined.body.message,
+      'DeepSeek is not configured yet. Add DEEPSEEK_API_KEY to .env, then restart the server.'
+    )
+    assert.deepEqual(resUndefined.body.steps, [])
+
+    // Case 2: DEEPSEEK_API_KEY is set to an empty string
+    process.env.DEEPSEEK_API_KEY = ''
+    const resEmpty = await handleChatRequest({ message: 'hello' }, store)
+    assert.equal(resEmpty.status, 200)
+    assert.equal(
+      resEmpty.body.message,
+      'DeepSeek is not configured yet. Add DEEPSEEK_API_KEY to .env, then restart the server.'
+    )
+    assert.deepEqual(resEmpty.body.steps, [])
   } finally {
     if (originalKey !== undefined) {
       process.env.DEEPSEEK_API_KEY = originalKey
+    } else {
+      delete process.env.DEEPSEEK_API_KEY
     }
   }
 })
