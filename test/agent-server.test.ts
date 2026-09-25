@@ -180,33 +180,40 @@ test('PATCH /api/tools/:name toggles tool status', async () => {
   assert.equal(updatedTool.enabled, true)
 })
 
-test('POST /api/chat delegates to handleChatRequest', async () => {
+test('POST /api/chat delegates to handleChatRequest and applies chatRateLimiter middleware', async () => {
   const store = new Store()
   const app = createApp(store)
   const originalDeepseekKey = process.env.DEEPSEEK_API_KEY
   delete process.env.DEEPSEEK_API_KEY
 
+  const server = app.listen(0)
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to start test server')
+  }
+  const port = address.port
+
   try {
-    const mockInvalid = createMockReqRes({
+    const resInvalid = await fetch(`http://127.0.0.1:${port}/api/chat`, {
       method: 'POST',
-      url: '/api/chat',
-      body: { message: '' }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: '' })
     })
-    await dispatchRequest(app, mockInvalid)
+    assert.equal(resInvalid.status, 400)
+    const bodyInvalid = await resInvalid.json()
+    assert.equal(bodyInvalid.error, 'Message is required')
 
-    assert.equal(mockInvalid.getStatus(), 400)
-    assert.equal(mockInvalid.getJson().error, 'Message is required')
-
-    const mockValid = createMockReqRes({
+    const resValid = await fetch(`http://127.0.0.1:${port}/api/chat`, {
       method: 'POST',
-      url: '/api/chat',
-      body: { message: 'Hello agent' }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Hello agent' })
     })
-    await dispatchRequest(app, mockValid)
-
-    assert.equal(mockValid.getStatus(), 200)
-    assert.match(mockValid.getJson().message, /DeepSeek is not configured yet/)
+    assert.equal(resValid.status, 200)
+    assert.ok(resValid.headers.has('ratelimit-limit'))
+    const bodyValid = await resValid.json()
+    assert.match(bodyValid.message, /DeepSeek is not configured yet/)
   } finally {
+    server.close()
     if (originalDeepseekKey !== undefined) {
       process.env.DEEPSEEK_API_KEY = originalDeepseekKey
     }
