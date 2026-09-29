@@ -17,6 +17,8 @@ function createMockReqRes(options: {
   req.headers = options.headers ?? {}
   req.body = options.body
   req.query = {}
+  req.ip = '127.0.0.1'
+  req.socket = { remoteAddress: '127.0.0.1' }
 
   const resHeaders: Record<string, string> = {}
   let statusCode = 200
@@ -178,6 +180,29 @@ test('PATCH /api/tools/:name toggles tool status', async () => {
   const updatedTool = mock.getJson() as any
   assert.equal(updatedTool.name, 'web_search_tavily')
   assert.equal(updatedTool.enabled, true)
+})
+
+test('POST /api/chat includes rate limiting headers', async () => {
+  const store = new Store()
+  const app = createApp(store)
+  const server = app.listen(0)
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to start test server')
+  }
+  const port = address.port
+
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: '' })
+    })
+    assert.equal(res.status, 400)
+    assert.ok(res.headers.has('ratelimit-limit'))
+  } finally {
+    server.close()
+  }
 })
 
 test('POST /api/chat delegates to handleChatRequest', async () => {
