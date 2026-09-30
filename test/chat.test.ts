@@ -107,6 +107,41 @@ test('executeToolCall rejects invalid tool arguments schema', async () => {
   assert.match(result2.step.result.error, /Invalid arguments for tool read_file/)
 })
 
+test('executeToolCall handles invalid JSON in function arguments gracefully', async () => {
+  const store = new Store()
+  let loggedArgs: any = null
+  store.logTool = async (log: any) => {
+    loggedArgs = log.args
+  }
+
+  const enabledTools: ToolDoc[] = [
+    {
+      name: 'list_files',
+      description: 'List files in workspace',
+      category: 'filesystem',
+      enabled: true,
+      requires_sandbox: false,
+      parameters: { type: 'object', properties: {} },
+      handler: 'filesystem.list'
+    }
+  ]
+
+  const callWithInvalidJson = {
+    id: 'call_invalid_json',
+    function: {
+      name: 'list_files',
+      arguments: '{invalid json string'
+    }
+  }
+
+  const result = await executeToolCall(callWithInvalidJson, enabledTools, store)
+  assert.equal(result.step.tool, 'list_files')
+  assert.ok(typeof result.step.duration === 'number')
+  assert.equal(result.toolMessage.role, 'tool')
+  assert.equal(result.toolMessage.tool_call_id, 'call_invalid_json')
+  assert.deepEqual(loggedArgs, {})
+})
+
 test('handleChatRequest returns 400 when message is empty', async () => {
   const store = new Store()
   const res = await handleChatRequest({ message: '   ' }, store)
