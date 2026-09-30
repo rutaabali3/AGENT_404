@@ -107,7 +107,7 @@ export async function handleChatRequest(
     }
   }
 
-  const enabled = (await store.tools()).filter(t => t.enabled)
+  const enabled = await store.tools({ enabled: true })
   const formattedTools = toolSchemas(enabled)
   const messages = await buildChatMessages(userMessage, reqBody.history)
   const allSteps: any[] = []

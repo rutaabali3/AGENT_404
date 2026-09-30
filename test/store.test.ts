@@ -14,6 +14,14 @@ test('Store - disconnected fallback behavior', async () => {
   const nonExistent = await store.getTool('non_existent_tool')
   assert.equal(nonExistent, undefined)
 
+  // tools with query filter in disconnected mode
+  const enabledTools = await store.tools({ enabled: true })
+  assert.ok(enabledTools.every(t => t.enabled === true))
+  assert.equal(enabledTools.length, defaultTools.filter(t => t.enabled).length)
+
+  const filesystemTools = await store.tools({ category: 'filesystem' })
+  assert.ok(filesystemTools.every(t => t.category === 'filesystem'))
+
   // logTool when disconnected completes safely without throwing
   await assert.doesNotReject(async () => {
     await store.logTool({ tool: 'execute_python', duration: 100 })
@@ -129,10 +137,43 @@ test('Store - setTool and tools methods when connected vs disconnected', async (
 
   ;(store as any).db = mockDb
 
-  // Test tools()
+  // Test tools() without query and with query
+  let passedQuery: any = null
+  const mockDbWithQuery = {
+    collection: (colName: string) => ({
+      find: (query?: any) => {
+        passedQuery = query
+        return {
+          sort: () => ({
+            toArray: async () => {
+              if (!query || Object.keys(query).length === 0) return mockToolsInDb
+              return mockToolsInDb.filter(t => Object.entries(query).every(([k, v]) => (t as any)[k] === v))
+            }
+          })
+        }
+      },
+      findOne: async (query: any) => mockToolsInDb.find(t => t.name === query.name) ?? null,
+      updateOne: async (filter: any, update: any) => {
+        updates.push({ filter, update })
+        const tool = mockToolsInDb.find(t => t.name === filter.name)
+        if (tool && update.$set?.enabled !== undefined) {
+          tool.enabled = update.$set.enabled
+        }
+        return { acknowledged: true, modifiedCount: 1 }
+      }
+    })
+  } as unknown as Db
+
+  ;(store as any).db = mockDbWithQuery
+
   const toolsFromDb = await store.tools()
   assert.equal(toolsFromDb.length, 1)
   assert.equal(toolsFromDb[0].name, 'execute_python')
+  assert.deepEqual(passedQuery, {})
+
+  const enabledFromDb = await store.tools({ enabled: true })
+  assert.equal(enabledFromDb.length, 0)
+  assert.deepEqual(passedQuery, { enabled: true })
 
   // Test setTool()
   const updatedTool = await store.setTool('execute_python', true)
@@ -474,6 +515,57 @@ test('Store - getTool with in-memory store simulation / benchmark', async () => 
   console.log(`  Old (fetch all + sort + find): ${durationOld.toFixed(2)} ms`)
   console.log(`  New (direct lookup): ${durationNew.toFixed(2)} ms`)
   console.log(`  Speedup: ${(durationOld / durationNew).toFixed(1)}x faster`)
+})
+
+test('Store - tools query filter benchmark', async () => {
+  const numTools = 10000
+  const mockTools = Array.from({ length: numTools }, (_, i) => ({
+    name: `tool_${i}`,
+    description: `Description ${i}`,
+    category: i % 2 === 0 ? 'cat_a' : 'cat_b',
+    enabled: i % 10 === 0, // 10% enabled
+    requires_sandbox: false,
+    parameters: {},
+    handler: `handler_${i}`
+  }))
+
+  const mockDb = {
+    collection: (colName: string) => ({
+      find: (query?: any) => ({
+        sort: () => ({
+          toArray: async () => {
+            if (!query || Object.keys(query).length === 0) return mockTools
+            return mockTools.filter(t => Object.entries(query).every(([k, v]) => (t as any)[k] === v))
+          }
+        })
+      })
+    })
+  } as unknown as Db
+
+  const store = new Store('mongodb://localhost:27017')
+  ;(store as any).db = mockDb
+
+  const iterations = 1000
+
+  // Old method: (await store.tools()).filter(t => t.enabled)
+  const startOld = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    const enabled = (await store.tools()).filter(t => t.enabled)
+    assert.equal(enabled.length, 1000)
+  }
+  const durationOld = performance.now() - startOld
+
+  // New method: await store.tools({ enabled: true })
+  const startNew = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    const enabled = await store.tools({ enabled: true })
+    assert.equal(enabled.length, 1000)
+  }
+  const durationNew = performance.now() - startNew
+
+  console.log(`Store.tools({ enabled: true }) Benchmark (${iterations} ops on ${numTools} tools):`)
+  console.log(`  Old (fetch all + in-memory filter): ${durationOld.toFixed(2)} ms`)
+  console.log(`  New (database-level pushdown filter query): ${durationNew.toFixed(2)} ms`)
 })
 
 test('Store - connect bulkWrite mapping benchmark', async () => {
