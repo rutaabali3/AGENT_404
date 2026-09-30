@@ -107,6 +107,74 @@ test('executeToolCall rejects invalid tool arguments schema', async () => {
   assert.match(result2.step.result.error, /Invalid arguments for tool read_file/)
 })
 
+test('executeToolCall handles malformed JSON or empty arguments gracefully by defaulting to empty object', async () => {
+  const store = new Store()
+  const enabledTools: ToolDoc[] = [
+    {
+      name: 'list_files',
+      description: 'List files in workspace',
+      category: 'filesystem',
+      enabled: true,
+      requires_sandbox: false,
+      parameters: { type: 'object', properties: {} },
+      handler: 'filesystem.list'
+    },
+    {
+      name: 'read_file',
+      description: 'Read a file',
+      category: 'filesystem',
+      enabled: true,
+      requires_sandbox: false,
+      parameters: {
+        type: 'object',
+        properties: { path: { type: 'string' } },
+        required: ['path']
+      },
+      handler: 'filesystem.read'
+    }
+  ]
+
+  // Test 1: Malformed JSON string defaults to {} and executes tool expecting no required args
+  const callWithMalformedJson = {
+    id: 'call_malformed_1',
+    function: {
+      name: 'list_files',
+      arguments: '{"invalid": json syntax'
+    }
+  }
+
+  const result1 = await executeToolCall(callWithMalformedJson, enabledTools, store)
+  assert.equal(result1.step.tool, 'list_files')
+  assert.equal(result1.toolMessage.role, 'tool')
+  assert.equal(result1.toolMessage.tool_call_id, 'call_malformed_1')
+  assert.ok(!result1.step.result?.error)
+
+  // Test 2: Malformed JSON string defaults to {} and fails schema validation gracefully for tool expecting required args
+  const callWithMalformedJsonRequiredArgs = {
+    id: 'call_malformed_2',
+    function: {
+      name: 'read_file',
+      arguments: '{not valid json}'
+    }
+  }
+
+  const result2 = await executeToolCall(callWithMalformedJsonRequiredArgs, enabledTools, store)
+  assert.equal(result2.step.tool, 'read_file')
+  assert.match(result2.step.result.error, /Invalid arguments for tool read_file/)
+
+  // Test 3: Missing arguments property (undefined or empty) defaults to {}
+  const callWithMissingArguments = {
+    id: 'call_missing_args',
+    function: {
+      name: 'list_files'
+    }
+  }
+
+  const result3 = await executeToolCall(callWithMissingArguments, enabledTools, store)
+  assert.equal(result3.step.tool, 'list_files')
+  assert.ok(!result3.step.result?.error)
+})
+
 test('handleChatRequest returns 400 when message is empty', async () => {
   const store = new Store()
   const res = await handleChatRequest({ message: '   ' }, store)
