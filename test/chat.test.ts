@@ -162,3 +162,38 @@ test('toolSchemas performance in loop benchmark', async () => {
 
   assert.ok(durationNew < durationOld)
 })
+
+test('executeToolCall ajv schema compilation benchmark', async () => {
+  const store = new Store()
+  const enabledTools: ToolDoc[] = [
+    {
+      name: 'read_file',
+      description: 'Read a file',
+      category: 'filesystem',
+      enabled: true,
+      requires_sandbox: false,
+      parameters: {
+        type: 'object',
+        properties: { path: { type: 'string' } },
+        required: ['path']
+      },
+      handler: 'filesystem.read'
+    }
+  ]
+  const call = {
+    id: 'call_1',
+    function: {
+      name: 'read_file',
+      arguments: '{"path": "nonexistent.txt"}'
+    }
+  }
+
+  const iterations = 10000
+  const startCached = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    await executeToolCall(call, enabledTools, store)
+  }
+  const durationCached = performance.now() - startCached
+
+  console.log(`executeToolCall with cached AJV validator (${iterations} ops): ${durationCached.toFixed(2)} ms`)
+})

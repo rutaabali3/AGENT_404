@@ -11,6 +11,16 @@ import {
 
 const Ajv = _Ajv.default || _Ajv
 const ajv = new Ajv()
+const validatorCache = new WeakMap<object, ReturnType<typeof ajv.compile>>()
+
+function getValidator(schema: object): ReturnType<typeof ajv.compile> {
+  let validate = validatorCache.get(schema)
+  if (!validate) {
+    validate = ajv.compile(schema)
+    validatorCache.set(schema, validate)
+  }
+  return validate
+}
 
 export async function buildSystemPrompt(userMessage: string): Promise<string> {
   const rules = await loadRules()
@@ -51,7 +61,7 @@ export async function executeToolCall(call: any, enabledTools: ToolDoc[], store:
   let result: any
   try {
     if (tool.parameters && Object.keys(tool.parameters).length > 0) {
-      const validate = ajv.compile(tool.parameters)
+      const validate = getValidator(tool.parameters)
       const valid = validate(args)
       if (!valid) {
         const errorDetails = validate.errors?.map((e: any) => `${e.instancePath || 'root'} ${e.message}`).join('; ')
