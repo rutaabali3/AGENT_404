@@ -70,13 +70,13 @@ export async function executeToolCall(call: any, enabledTools: ToolDoc[], store:
     ? `Skill instructions for this tool:\n${skill}\n\nTool result:\n${JSON.stringify(result)}`
     : JSON.stringify(result)
 
-  await store.logTool({
+  store.logTool({
     name: tool.name,
     handler: tool.handler,
     args,
     result,
     skill_loaded: Boolean(skill)
-  })
+  }).catch(() => {})
 
   return {
     step,

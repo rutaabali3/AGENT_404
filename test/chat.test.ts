@@ -162,3 +162,41 @@ test('toolSchemas performance in loop benchmark', async () => {
 
   assert.ok(durationNew < durationOld)
 })
+
+test('executeToolCall asynchronous fire-and-forget logTool benchmark', async () => {
+  const enabledTools: ToolDoc[] = [
+    {
+      name: 'list_files',
+      description: 'List files in workspace',
+      category: 'filesystem',
+      enabled: true,
+      requires_sandbox: false,
+      parameters: { type: 'object', properties: {} },
+      handler: 'filesystem.list'
+    }
+  ]
+
+  const call = {
+    id: 'call_123',
+    function: {
+      name: 'list_files',
+      arguments: '{}'
+    }
+  }
+
+  // Simulate a Store with a 2ms logging delay (e.g. database write)
+  const simulatedStore = new Store()
+  simulatedStore.logTool = async () => {
+    await new Promise(resolve => setTimeout(resolve, 2))
+  }
+
+  const iterations = 50
+
+  const start = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    await executeToolCall(call, enabledTools, simulatedStore)
+  }
+  const duration = performance.now() - start
+
+  console.log(`[Benchmark] executeToolCall (${iterations} ops): ${duration.toFixed(2)} ms`)
+})

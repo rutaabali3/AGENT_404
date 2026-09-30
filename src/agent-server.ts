@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Store } from './agent/store.js'
 import { handleChatRequest } from './agent/chat.js'
-import { requireApiKey, securityHeaders } from './agent/auth.js'
+import { requireApiKey, securityHeaders, chatRateLimiter } from './agent/auth.js'
 
 export { requireApiKey, securityHeaders, chatRateLimiter }
 
