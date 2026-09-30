@@ -52,6 +52,77 @@ function isPrivateIp(ip: string): boolean {
   return false
 }
 
+export function cleanHtmlText(html: string, targetLength = 20000): string {
+  const str = String(html)
+  if (str.length <= 500000) {
+    return str
+      .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .slice(0, targetLength)
+  }
+
+  let result = ''
+  let pos = 0
+  const maxChunkSize = 500000
+
+  while (result.length < targetLength && pos < str.length) {
+    let cutoff = Math.min(pos + maxChunkSize, str.length)
+
+    if (cutoff < str.length) {
+      const slice = str.slice(pos, cutoff)
+      const sliceLower = slice.toLowerCase()
+
+      const lastOpenScript = sliceLower.lastIndexOf('<script')
+      const lastCloseScript = sliceLower.lastIndexOf('</script>')
+      if (lastOpenScript > lastCloseScript) {
+        const scriptStartPos = pos + lastOpenScript
+        const closeScriptIdx = str.toLowerCase().indexOf('</script>', scriptStartPos)
+        if (closeScriptIdx !== -1) {
+          cutoff = closeScriptIdx + 9
+        } else {
+          cutoff = str.length
+        }
+      }
+
+      const lastOpenStyle = sliceLower.lastIndexOf('<style')
+      const lastCloseStyle = sliceLower.lastIndexOf('</style>')
+      if (lastOpenStyle > lastCloseStyle && cutoff < str.length) {
+        const styleStartPos = pos + lastOpenStyle
+        const closeStyleIdx = str.toLowerCase().indexOf('</style>', styleStartPos)
+        if (closeStyleIdx !== -1) {
+          cutoff = closeStyleIdx + 8
+        } else {
+          cutoff = str.length
+        }
+      }
+
+      if (cutoff < str.length) {
+        const lastTagOpen = str.lastIndexOf('<', cutoff)
+        const lastTagClose = str.lastIndexOf('>', cutoff)
+        if (lastTagOpen > pos && lastTagOpen > lastTagClose) {
+          cutoff = lastTagOpen
+        }
+      }
+    }
+
+    if (cutoff <= pos) {
+      cutoff = Math.min(pos + maxChunkSize, str.length)
+    }
+
+    const chunk = str.slice(pos, cutoff)
+    const cleanedChunk = chunk
+      .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+
+    result += (result ? ' ' : '') + cleanedChunk
+    pos = cutoff
+  }
+
+  return result.replace(/\s+/g, ' ').slice(0, targetLength)
+}
+
 export async function assertSafeUrl(urlString: string): Promise<void> {
   let parsed: URL
   try {
@@ -200,7 +271,7 @@ export const handlers: Record<string, (args: any) => Promise<any>> = {
   },
   'web.searchTavily': async a => { if (!process.env.TAVILY_API_KEY) return { error: 'TAVILY_API_KEY is not configured' }; const { data } = await axios.post('https://api.tavily.com/search', { api_key: process.env.TAVILY_API_KEY, query: a.query, max_results: 5 }, { timeout: 10000 }); return data },
   'web.fetch': async a => {
-    await assertSafeUrl(a.url); const { data } = await axios.get(a.url, { timeout: 15000, responseType: 'text', maxContentLength: 5 * 1024 * 1024, maxBodyLength: 5 * 1024 * 1024 }); return String(data).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 20000)
+    await assertSafeUrl(a.url); const { data } = await axios.get(a.url, { timeout: 15000, responseType: 'text', maxContentLength: 5 * 1024 * 1024, maxBodyLength: 5 * 1024 * 1024 }); return cleanHtmlText(String(data), 20000)
   },
   'media.downloadVideo': async a => { await assertSafeUrl(a?.url ?? ''); const outputDir = path.resolve(process.env.OUTPUTS_DIR ?? './sandbox/outputs'); await fs.mkdir(outputDir, { recursive: true }); const template = path.join(outputDir, '%(title).100s.%(ext)s'); try { const { stdout, stderr } = await exec('yt-dlp', ['--no-playlist', '-o', template, '--', a.url], { maxBuffer: 1024 * 1024 }); return { provider: 'yt-dlp', stdout, stderr, outputs: await fs.readdir(outputDir) } } catch (error: any) { return { error: `yt-dlp unavailable or download failed: ${error.message}`, hint: 'Install yt-dlp locally to enable download_video.' } } },
 }

@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
+import axios from 'axios'
+import { runTool, toolSchemas, handlers, readFile, writeFile, listFiles, cleanHtmlText } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
 
 const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
@@ -330,6 +331,31 @@ test('web.fetch blocks HTTP redirects to internal/private hostnames or IP addres
       axios.get = originalGet
     }
   }
+})
+
+test('cleanHtmlText strips script/style/html tags, collapses whitespace, and respects slice limits', () => {
+  const input = '<html><head><style>body{color:red;}</style><script>alert(1)</script></head><body>  <h1>Title</h1>  <p>Hello   World!</p></body></html>'
+  const cleaned = cleanHtmlText(input, 20)
+  assert.equal(cleaned, ' Title Hello World! ')
+})
+
+test('cleanHtmlText avoids leaking script/style code across chunk boundaries', () => {
+  const badCutoffHtml = '<script>var code = 123;</script>'.repeat(15000) + '<script>var LEAK_CODE = "THIS_SHOULD_NOT_LEAK";' + 'A'.repeat(500000) + '</script><h1>Header</h1>'
+  const cleaned = cleanHtmlText(badCutoffHtml, 20000)
+  assert.equal(cleaned.includes('LEAK_CODE'), false)
+})
+
+test('cleanHtmlText benchmark on 5MB payload', () => {
+  const html5MB = ('<div>' + 'Hello world page content. '.repeat(50) + '<script>var x = 1;</script></div>').repeat(3500)
+
+  const t0 = performance.now()
+  for (let i = 0; i < 20; i++) {
+    cleanHtmlText(html5MB, 20000)
+  }
+  const durationMs = performance.now() - t0
+
+  console.log(`[Benchmark] cleanHtmlText (20 ops on 5MB payload): ${durationMs.toFixed(2)} ms`)
+  assert.ok(durationMs < 1000, `Expected cleanHtmlText to run under 1000ms, took ${durationMs}ms`)
 })
 
 test('web.fetch enforces max redirect limit', async () => {
