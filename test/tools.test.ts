@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
+import axios from 'axios'
+import { runTool, toolSchemas, handlers, readFile, writeFile, listFiles, assertSafeUrl } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
 
 const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
@@ -294,6 +295,43 @@ test('web.fetch follows safe redirects and resolves relative location headers', 
     assert.equal(res.trim(), 'Success Page')
   } finally {
     axios.get = originalGet
+  }
+})
+
+test('assertSafeUrl throws Invalid URL format for malformed URL strings', async () => {
+  const invalidUrls = ['not-a-valid-url', 'http://', '://bad.url', '']
+
+  for (const invalidUrl of invalidUrls) {
+    await assert.rejects(
+      async () => {
+        await assertSafeUrl(invalidUrl)
+      },
+      {
+        name: 'Error',
+        message: 'Invalid URL format'
+      }
+    )
+  }
+})
+
+test('assertSafeUrl throws Error for disallowed protocols', async () => {
+  const disallowedProtocolUrls = [
+    'ftp://example.com',
+    'file:///etc/passwd',
+    'javascript:alert(1)',
+    'gopher://example.com'
+  ]
+
+  for (const url of disallowedProtocolUrls) {
+    await assert.rejects(
+      async () => {
+        await assertSafeUrl(url)
+      },
+      {
+        name: 'Error',
+        message: 'Only http and https protocols are allowed'
+      }
+    )
   }
 })
 
