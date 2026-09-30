@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
+import axios from 'axios'
+import { runTool, toolSchemas, handlers, readFile, writeFile, listFiles, isPrivateIp, assertSafeUrl } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
 
 const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
@@ -294,6 +295,86 @@ test('web.fetch follows safe redirects and resolves relative location headers', 
     assert.equal(res.trim(), 'Success Page')
   } finally {
     axios.get = originalGet
+  }
+})
+
+test('isPrivateIp correctly identifies private and public IPv4 and IPv6 addresses', () => {
+  // IPv4 Loopback (127.0.0.0/8)
+  assert.equal(isPrivateIp('127.0.0.1'), true)
+  assert.equal(isPrivateIp('127.255.255.255'), true)
+
+  // IPv4 Private Range 10.0.0.0/8
+  assert.equal(isPrivateIp('10.0.0.1'), true)
+  assert.equal(isPrivateIp('10.255.255.255'), true)
+
+  // IPv4 Private Range 172.16.0.0/12
+  assert.equal(isPrivateIp('172.16.0.1'), true)
+  assert.equal(isPrivateIp('172.31.255.255'), true)
+  assert.equal(isPrivateIp('172.15.255.255'), false)
+  assert.equal(isPrivateIp('172.32.0.0'), false)
+
+  // IPv4 Private Range 192.168.0.0/16
+  assert.equal(isPrivateIp('192.168.0.1'), true)
+  assert.equal(isPrivateIp('192.168.255.255'), true)
+  assert.equal(isPrivateIp('192.169.0.1'), false)
+
+  // IPv4 Link-local / Cloud Metadata 169.254.0.0/16
+  assert.equal(isPrivateIp('169.254.169.254'), true)
+  assert.equal(isPrivateIp('169.254.1.1'), true)
+
+  // IPv4 Unspecified / Default 0.0.0.0/8
+  assert.equal(isPrivateIp('0.0.0.0'), true)
+  assert.equal(isPrivateIp('0.1.2.3'), true)
+
+  // Public IPv4
+  assert.equal(isPrivateIp('8.8.8.8'), false)
+  assert.equal(isPrivateIp('1.1.1.1'), false)
+  assert.equal(isPrivateIp('93.184.216.34'), false)
+
+  // IPv4-mapped IPv6 addresses (::ffff:x.x.x.x)
+  assert.equal(isPrivateIp('::ffff:127.0.0.1'), true)
+  assert.equal(isPrivateIp('::FFFF:10.0.0.1'), true)
+  assert.equal(isPrivateIp('::ffff:8.8.8.8'), false)
+
+  // IPv6 Loopback and Unspecified
+  assert.equal(isPrivateIp('::1'), true)
+  assert.equal(isPrivateIp('::'), true)
+
+  // IPv6 Link-local (fe80::/10)
+  assert.equal(isPrivateIp('fe80::1'), true)
+
+  // IPv6 Unique Local Address (fc00::/7 - fc or fd)
+  assert.equal(isPrivateIp('fc00::1'), true)
+  assert.equal(isPrivateIp('fd00::1'), true)
+  assert.equal(isPrivateIp('fd12:3456:7890::1'), true)
+
+  // Public IPv6
+  assert.equal(isPrivateIp('2001:db8::1'), false)
+  assert.equal(isPrivateIp('2607:f8b0:4005:805::200e'), false)
+
+  // Non-IP strings and domain names
+  assert.equal(isPrivateIp('example.com'), false)
+  assert.equal(isPrivateIp('not-an-ip'), false)
+})
+
+test('assertSafeUrl blocks URLs with private IP hostnames', async () => {
+  const privateUrls = [
+    'http://127.0.0.1/api',
+    'http://10.0.0.5/',
+    'http://172.16.0.1/',
+    'http://192.168.1.1/',
+    'http://169.254.169.254/latest/meta-data/',
+    'http://[::1]/',
+    'http://[fe80::1]/'
+  ]
+
+  for (const url of privateUrls) {
+    await assert.rejects(
+      async () => {
+        await assertSafeUrl(url)
+      },
+      (err: Error) => err.message.includes('restricted')
+    )
   }
 })
 
