@@ -25,6 +25,7 @@ export function securityHeaders(_req: Request, res: Response, next: NextFunction
   res.setHeader('X-Frame-Options', 'DENY')
   res.setHeader('X-XSS-Protection', '0')
   res.setHeader('Referrer-Policy', 'no-referrer')
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';")
   next()
 }
 
