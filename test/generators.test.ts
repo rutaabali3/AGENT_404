@@ -5,6 +5,68 @@ import fs from 'node:fs/promises'
 import axios from 'axios'
 import { convertToPdf, generateDocx, generateXlsx, generatePptx } from '../src/agent/generators.js'
 
+test('convertToPdf generates a valid PDF file with custom filename and default filename', async () => {
+  const outputsDir = path.resolve(process.env.OUTPUTS_DIR ?? './sandbox/outputs')
+
+  // Test custom filename
+  const customFile = 'custom_test.pdf'
+  const customRes = await convertToPdf({
+    content: 'Hello PDF World!\nThis is a test line.',
+    filename: customFile
+  })
+
+  assert.equal(customRes.path, customFile)
+  assert.ok(customRes.bytes > 0)
+
+  const customFilePath = path.join(outputsDir, customFile)
+  const customBuffer = await fs.readFile(customFilePath)
+  assert.ok(customBuffer.toString('utf8', 0, 5).startsWith('%PDF-'))
+
+  // Test default filename
+  const defaultRes = await convertToPdf({
+    content: 'Default filename content'
+  })
+
+  assert.equal(defaultRes.path, 'agent-output.pdf')
+  assert.ok(defaultRes.bytes > 0)
+
+  const defaultFilePath = path.join(outputsDir, 'agent-output.pdf')
+  const defaultBuffer = await fs.readFile(defaultFilePath)
+  assert.ok(defaultBuffer.toString('utf8', 0, 5).startsWith('%PDF-'))
+
+  // Cleanup
+  await fs.rm(customFilePath, { force: true })
+  await fs.rm(defaultFilePath, { force: true })
+})
+
+test('convertToPdf correctly formats markdown headings and body content', async () => {
+  const outputsDir = path.resolve(process.env.OUTPUTS_DIR ?? './sandbox/outputs')
+  const filename = 'headings_test.pdf'
+  const markdownContent = [
+    '# Main Title (Heading 1)',
+    'This is regular paragraph text under heading 1.',
+    '## Section Header (Heading 2)',
+    'Another regular paragraph.',
+    '### Subsection Header (Heading 3)',
+    'Final paragraph text.'
+  ].join('\n')
+
+  const result = await convertToPdf({
+    content: markdownContent,
+    filename
+  })
+
+  assert.equal(result.path, filename)
+  assert.ok(result.bytes > 0)
+
+  const filePath = path.join(outputsDir, filename)
+  const pdfBuffer = await fs.readFile(filePath)
+  assert.ok(pdfBuffer.toString('utf8', 0, 5).startsWith('%PDF-'))
+
+  // Cleanup
+  await fs.rm(filePath, { force: true })
+})
+
 test('outputPath sanitizes path traversal attempts and keeps output inside outputs directory', async () => {
   const resPdf = await convertToPdf({ content: 'Test PDF', filename: '../../test_traversal.pdf' })
   assert.equal(resPdf.path, 'test_traversal.pdf')
