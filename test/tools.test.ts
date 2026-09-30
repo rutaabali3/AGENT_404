@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
+import axios from 'axios'
+import { runTool, toolSchemas, handlers, readFile, writeFile, listFiles } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
 
 const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
@@ -294,6 +295,74 @@ test('web.fetch follows safe redirects and resolves relative location headers', 
     assert.equal(res.trim(), 'Success Page')
   } finally {
     axios.get = originalGet
+  }
+})
+
+test('web.searchSearxng returns error and fallback message when SearXNG fails and TAVILY_API_KEY is not set', async () => {
+  const searchHandler = handlers['web.searchSearxng']
+  const originalGet = axios.get
+  const originalTavilyKey = process.env.TAVILY_API_KEY
+
+  delete process.env.TAVILY_API_KEY
+  axios.get = (async () => {
+    throw new Error('connect ECONNREFUSED 127.0.0.1:8080')
+  }) as any
+
+  try {
+    const res = await searchHandler({ query: 'typescript testing' })
+    assert.deepEqual(res, {
+      error: 'SearXNG unavailable: connect ECONNREFUSED 127.0.0.1:8080',
+      fallback: 'TAVILY_API_KEY is not configured'
+    })
+  } finally {
+    axios.get = originalGet
+    if (originalTavilyKey !== undefined) {
+      process.env.TAVILY_API_KEY = originalTavilyKey
+    } else {
+      delete process.env.TAVILY_API_KEY
+    }
+  }
+})
+
+test('web.searchSearxng falls back to Tavily search when SearXNG fails and TAVILY_API_KEY is set', async () => {
+  const searchHandler = handlers['web.searchSearxng']
+  const originalGet = axios.get
+  const originalPost = axios.post
+  const originalTavilyKey = process.env.TAVILY_API_KEY
+
+  process.env.TAVILY_API_KEY = 'test-tavily-key'
+  axios.get = (async () => {
+    throw new Error('timeout of 10000ms exceeded')
+  }) as any
+
+  let postCalled = false
+  axios.post = (async (url: string, body: any, config: any) => {
+    postCalled = true
+    assert.equal(url, 'https://api.tavily.com/search')
+    assert.deepEqual(body, {
+      api_key: 'test-tavily-key',
+      query: 'typescript testing',
+      max_results: 5
+    })
+    assert.equal(config.timeout, 10000)
+    return { data: { results: [{ title: 'Fallback Result', url: 'https://example.com' }] } }
+  }) as any
+
+  try {
+    const res = await searchHandler({ query: 'typescript testing' })
+    assert.ok(postCalled)
+    assert.deepEqual(res, {
+      provider: 'tavily-fallback',
+      results: { results: [{ title: 'Fallback Result', url: 'https://example.com' }] }
+    })
+  } finally {
+    axios.get = originalGet
+    axios.post = originalPost
+    if (originalTavilyKey !== undefined) {
+      process.env.TAVILY_API_KEY = originalTavilyKey
+    } else {
+      delete process.env.TAVILY_API_KEY
+    }
   }
 })
 
