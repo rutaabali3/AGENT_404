@@ -2,7 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
+import dns from 'node:dns/promises'
+import axios from 'axios'
+import { runTool, toolSchemas, handlers, readFile, writeFile, listFiles, assertSafeUrl } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
 
 const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
@@ -262,6 +264,53 @@ test('toolSchemas filters disabled tools and maps enabled tools to OpenAI/DeepSe
       parameters: { type: 'object', properties: { p1: { type: 'string' } } }
     }
   })
+})
+
+test('assertSafeUrl handles dns.lookup errors and private IP resolution', async () => {
+  const originalLookup = dns.lookup
+
+  try {
+    // 1. Test generic DNS resolution failure mapping
+    dns.lookup = (async () => {
+      throw new Error('getaddrinfo ENOTFOUND unreachable-domain.com')
+    }) as any
+
+    await assert.rejects(
+      async () => {
+        await assertSafeUrl('https://unreachable-domain.com/path')
+      },
+      {
+        name: 'Error',
+        message: 'DNS resolution failed for host: unreachable-domain.com'
+      }
+    )
+
+    // 2. Test re-throwing restricted error when dns.lookup returns private IP
+    dns.lookup = (async () => {
+      return [{ address: '192.168.1.50', family: 4 }]
+    }) as any
+
+    await assert.rejects(
+      async () => {
+        await assertSafeUrl('https://public-looking-domain.com')
+      },
+      {
+        name: 'Error',
+        message: 'Access to private or local IP address is restricted'
+      }
+    )
+
+    // 3. Test successful DNS resolution for public IP
+    dns.lookup = (async () => {
+      return [{ address: '93.184.216.34', family: 4 }]
+    }) as any
+
+    await assert.doesNotReject(async () => {
+      await assertSafeUrl('https://public-looking-domain.com')
+    })
+  } finally {
+    dns.lookup = originalLookup
+  }
 })
 
 test('web.fetch follows safe redirects and resolves relative location headers', async () => {
