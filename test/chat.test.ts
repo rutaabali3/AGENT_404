@@ -132,7 +132,7 @@ test('handleChatRequest returns unconfigured message when DEEPSEEK_API_KEY is no
 
 test('toolSchemas performance in loop benchmark', async () => {
   const store = new Store()
-  const enabledTools = (await store.tools()).filter(t => t.enabled)
+  const enabledTools = await store.tools({ enabled: true })
   const iterations = 100000
 
   // Old: toolSchemas called inside turn loop (up to 6 times per request)

@@ -1,4 +1,4 @@
-import { MongoClient, Db } from 'mongodb'
+import { MongoClient, Db, Filter } from 'mongodb'
 
 export type ToolDoc = {
   name: string; description: string; category: string; enabled: boolean; requires_sandbox: boolean
@@ -84,7 +84,13 @@ export class Store {
     }));
     await col.bulkWrite(ops);
   }
-  async tools() { if (!this.db) return defaultTools; return this.db.collection<ToolDoc>('tools').find().sort({ category: 1, name: 1 }).toArray() }
+  async tools(query?: Filter<ToolDoc>) {
+    if (!this.db) {
+      if (!query) return defaultTools
+      return defaultTools.filter(tool => Object.entries(query).every(([k, v]) => (tool as any)[k] === v))
+    }
+    return this.db.collection<ToolDoc>('tools').find(query ?? {}).sort({ category: 1, name: 1 }).toArray()
+  }
   async getTool(name: string) { if (!this.db) return defaultTools.find(t => t.name === name); return (await this.db.collection<ToolDoc>('tools').findOne({ name })) ?? undefined }
   async setTool(name: string, enabled: boolean) { if (this.db) await this.db.collection('tools').updateOne({ name }, { $set: { enabled, updated_at: new Date() } }); return this.getTool(name) }
   async saveSession(messages: unknown[]) { if (this.db) await this.db.collection('sessions').insertOne({ messages, created_at: new Date() }) }
