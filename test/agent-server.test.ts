@@ -213,11 +213,15 @@ test('POST /api/chat delegates to handleChatRequest', async () => {
   }
 })
 
-test('Wildcard route serves public index.html SPA fallback', async () => {
+test('Wildcard route serves public index.html SPA fallback with security headers', async () => {
   const app = createApp()
   const mock = createMockReqRes({ method: 'GET', url: '/some/client/route' })
   await dispatchRequest(app, mock)
 
   assert.equal(mock.getStatus(), 200)
   assert.equal(mock.getSentFile(), path.resolve('public/index.html'))
+  assert.equal(mock.getHeaders()['X-Content-Type-Options'], 'nosniff')
+  assert.equal(mock.getHeaders()['X-Frame-Options'], 'DENY')
+  assert.equal(mock.getHeaders()['X-XSS-Protection'], '0')
+  assert.equal(mock.getHeaders()['Referrer-Policy'], 'no-referrer')
 })
