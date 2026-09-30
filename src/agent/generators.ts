@@ -83,7 +83,15 @@ export async function generateXlsx(args: { data: unknown[]; filename?: string })
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet('Data')
   const rows = Array.isArray(args.data) ? args.data : []
-  const normalized = rows.map(row => (Array.isArray(row) ? row : Object.values((row ?? {}) as Record<string, unknown>)))
+  const sanitizeCell = (cell: unknown) => {
+    if (typeof cell === 'string' && /^[=+\-@\t\r]/.test(cell)) {
+      return `'${cell}`
+    }
+    return cell
+  }
+  const normalized = rows.map(row =>
+    (Array.isArray(row) ? row : Object.values((row ?? {}) as Record<string, unknown>)).map(sanitizeCell)
+  )
   const first = normalized[0] ?? []
   sheet.addRow(first)
 
