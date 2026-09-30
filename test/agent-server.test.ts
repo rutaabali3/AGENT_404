@@ -94,6 +94,27 @@ test('GET /api/health returns health status and security headers', async () => {
   }
 })
 
+test('POST /api/chat applies rate limiting middleware', async () => {
+  const store = new Store()
+  const app = createApp(store)
+
+  const mock = createMockReqRes({
+    method: 'POST',
+    url: '/api/chat',
+    body: { message: 'Hello agent' }
+  })
+  mock.req.ip = '10.0.0.99'
+  mock.req.socket = { remoteAddress: '10.0.0.99' }
+
+  await dispatchRequest(app, mock)
+
+  assert.ok(
+    mock.getHeaders()['ratelimit-limit'] !== undefined ||
+    mock.getHeaders()['ratelimit-remaining'] !== undefined ||
+    mock.getHeaders()['x-ratelimit-limit'] !== undefined
+  )
+})
+
 test('GET /api/health reflects MONGODB_URI presence', async () => {
   const originalDbUri = process.env.MONGODB_URI
   process.env.MONGODB_URI = 'mongodb://localhost:27017/test_db'
@@ -192,6 +213,8 @@ test('POST /api/chat delegates to handleChatRequest', async () => {
       url: '/api/chat',
       body: { message: '' }
     })
+    mockInvalid.req.ip = '10.0.0.101'
+    mockInvalid.req.socket = { remoteAddress: '10.0.0.101' }
     await dispatchRequest(app, mockInvalid)
 
     assert.equal(mockInvalid.getStatus(), 400)
@@ -202,6 +225,8 @@ test('POST /api/chat delegates to handleChatRequest', async () => {
       url: '/api/chat',
       body: { message: 'Hello agent' }
     })
+    mockValid.req.ip = '10.0.0.102'
+    mockValid.req.socket = { remoteAddress: '10.0.0.102' }
     await dispatchRequest(app, mockValid)
 
     assert.equal(mockValid.getStatus(), 200)
