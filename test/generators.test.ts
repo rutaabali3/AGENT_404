@@ -168,3 +168,30 @@ test('media.downloadVideo prevents SSRF and non-http(s) requests', async () => {
     })
   }
 })
+
+test('generateXlsx generates xlsx file with headers and data rows correctly', async () => {
+  const data = [
+    { Name: 'Alice', Age: 30, Role: 'Engineer' },
+    { Name: 'Bob', Age: 25, Role: 'Designer' },
+    { Name: 'Charlie', Age: 35, Role: 'Manager' }
+  ]
+  const res = await generateXlsx({ data, filename: 'test_output.xlsx' })
+  assert.equal(res.rows, 3)
+  assert.ok(res.bytes > 0)
+
+  // Benchmark generating XLSX with 10,000 rows
+  const largeData = Array.from({ length: 10000 }, (_, i) => ({
+    id: i + 1,
+    name: `User ${i + 1}`,
+    value: i * 100
+  }))
+  const start = performance.now()
+  const benchRes = await generateXlsx({ data: largeData, filename: 'bench_output.xlsx' })
+  const elapsed = performance.now() - start
+  console.log(`# [Benchmark] generateXlsx with 10000 rows: ${elapsed.toFixed(2)} ms`)
+  assert.equal(benchRes.rows, 10000)
+
+  const outputs = path.resolve('./sandbox/outputs')
+  await fs.rm(path.join(outputs, 'test_output.xlsx'), { force: true })
+  await fs.rm(path.join(outputs, 'bench_output.xlsx'), { force: true })
+})
