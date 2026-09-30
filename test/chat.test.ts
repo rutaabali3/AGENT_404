@@ -66,6 +66,51 @@ test('executeToolCall runs registered tool and logs tool call', async () => {
   assert.equal(result.toolMessage.tool_call_id, 'call_123')
 })
 
+test('AJV schema compilation caching benchmark in tool validation', async () => {
+  const parameters = {
+    type: 'object',
+    properties: { path: { type: 'string' } },
+    required: ['path']
+  }
+  const args = { path: 'sample.txt' }
+  const iterations = 100000
+
+  // Uncached (compiling schema on every execution)
+  const AjvClass = (await import('ajv')).default
+  const ajvInst = new (AjvClass.default || AjvClass)()
+  const startUncached = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    const validate = ajvInst.compile(parameters)
+    validate(args)
+  }
+  const durationUncached = performance.now() - startUncached
+
+  // Cached (using WeakMap cached validator)
+  const validatorCache = new WeakMap()
+  function getValidator(schema: object) {
+    let validate = validatorCache.get(schema)
+    if (!validate) {
+      validate = ajvInst.compile(schema)
+      validatorCache.set(schema, validate)
+    }
+    return validate
+  }
+
+  const startCached = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    const validate = getValidator(parameters)
+    validate(args)
+  }
+  const durationCached = performance.now() - startCached
+
+  console.log(`Benchmark AJV Schema Validation (${iterations} operations):`)
+  console.log(`  Uncached (compiling schema on every execution): ${durationUncached.toFixed(2)} ms`)
+  console.log(`  Cached (using WeakMap cached validator): ${durationCached.toFixed(2)} ms`)
+  console.log(`  Speedup: ${(durationUncached / durationCached).toFixed(1)}x faster`)
+
+  assert.ok(durationCached < durationUncached)
+})
+
 test('executeToolCall rejects invalid tool arguments schema', async () => {
   const store = new Store()
   const enabledTools: ToolDoc[] = [
