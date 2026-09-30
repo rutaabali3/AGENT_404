@@ -199,8 +199,39 @@ export const handlers: Record<string, (args: any) => Promise<any>> = {
     }
   },
   'web.searchTavily': async a => { if (!process.env.TAVILY_API_KEY) return { error: 'TAVILY_API_KEY is not configured' }; const { data } = await axios.post('https://api.tavily.com/search', { api_key: process.env.TAVILY_API_KEY, query: a.query, max_results: 5 }, { timeout: 10000 }); return data },
-  'web.fetch': async a => {
-    await assertSafeUrl(a.url); const { data } = await axios.get(a.url, { timeout: 15000, responseType: 'text', maxContentLength: 5 * 1024 * 1024, maxBodyLength: 5 * 1024 * 1024 }); return String(data).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 20000)
+  'web.fetch': async (a) => {
+    let currentUrl = a.url
+    let redirects = 0
+    const maxRedirects = 5
+
+    while (redirects <= maxRedirects) {
+      await assertSafeUrl(currentUrl)
+      const res = await axios.get(currentUrl, {
+        timeout: 15000,
+        responseType: 'text',
+        maxContentLength: 5 * 1024 * 1024,
+        maxBodyLength: 5 * 1024 * 1024,
+        maxRedirects: 0,
+        validateStatus: (status) => status >= 200 && status < 400
+      })
+
+      if (res.status >= 300 && res.status < 400 && res.headers.location) {
+        redirects++
+        if (redirects > maxRedirects) {
+          throw new Error('Too many redirects')
+        }
+        currentUrl = new URL(res.headers.location, currentUrl).toString()
+        continue
+      }
+
+      return String(res.data)
+        .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .slice(0, 20000)
+    }
+
+    throw new Error('Too many redirects')
   },
   'media.downloadVideo': async a => { await assertSafeUrl(a?.url ?? ''); const outputDir = path.resolve(process.env.OUTPUTS_DIR ?? './sandbox/outputs'); await fs.mkdir(outputDir, { recursive: true }); const template = path.join(outputDir, '%(title).100s.%(ext)s'); try { const { stdout, stderr } = await exec('yt-dlp', ['--no-playlist', '-o', template, '--', a.url], { maxBuffer: 1024 * 1024 }); return { provider: 'yt-dlp', stdout, stderr, outputs: await fs.readdir(outputDir) } } catch (error: any) { return { error: `yt-dlp unavailable or download failed: ${error.message}`, hint: 'Install yt-dlp locally to enable download_video.' } } },
 }

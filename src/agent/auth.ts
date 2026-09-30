@@ -31,7 +31,8 @@ export function securityHeaders(_req: Request, res: Response, next: NextFunction
 export function requireApiKey(req: Request, res: Response, next: NextFunction) {
   const apiKey = process.env.LOCAL_AGENT_API_KEY
   if (!apiKey) {
-    return next()
+    res.status(500).json({ error: 'Server API key is not configured' })
+    return
   }
 
   const headerKey = req.headers['x-api-key']
