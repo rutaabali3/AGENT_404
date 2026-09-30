@@ -2,7 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
+import dns from 'node:dns/promises'
+import axios from 'axios'
+import { runTool, toolSchemas, handlers, readFile, writeFile, listFiles, assertSafeUrl } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
 
 const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
@@ -262,6 +264,28 @@ test('toolSchemas filters disabled tools and maps enabled tools to OpenAI/DeepSe
       parameters: { type: 'object', properties: { p1: { type: 'string' } } }
     }
   })
+})
+
+test('assertSafeUrl throws error when DNS resolution fails for host', async () => {
+  const originalLookup = dns.lookup
+
+  dns.lookup = (async () => {
+    throw new Error('ENOTFOUND')
+  }) as any
+
+  try {
+    await assert.rejects(
+      async () => {
+        await assertSafeUrl('https://non-existent-domain.invalid')
+      },
+      {
+        name: 'Error',
+        message: 'DNS resolution failed for host: non-existent-domain.invalid'
+      }
+    )
+  } finally {
+    dns.lookup = originalLookup
+  }
 })
 
 test('web.fetch follows safe redirects and resolves relative location headers', async () => {
