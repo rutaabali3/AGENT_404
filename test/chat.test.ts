@@ -66,6 +66,43 @@ test('executeToolCall runs registered tool and logs tool call', async () => {
   assert.equal(result.toolMessage.tool_call_id, 'call_123')
 })
 
+test('executeToolCall baseline logging latency benchmark', async () => {
+  const store = new Store()
+  // Mock store.logTool to simulate a typical MongoDB/network latency (e.g., 20ms)
+  const logLatencyMs = 20
+  store.logTool = async () => {
+    await new Promise(resolve => setTimeout(resolve, logLatencyMs))
+  }
+
+  const enabledTools: ToolDoc[] = [
+    {
+      name: 'list_files',
+      description: 'List files in workspace',
+      category: 'filesystem',
+      enabled: true,
+      requires_sandbox: false,
+      parameters: { type: 'object', properties: {} },
+      handler: 'filesystem.list'
+    }
+  ]
+
+  const call = {
+    id: 'call_benchmark',
+    function: {
+      name: 'list_files',
+      arguments: '{}'
+    }
+  }
+
+  const iterations = 10
+  const start = performance.now()
+  for (let i = 0; i < iterations; i++) {
+    await executeToolCall(call, enabledTools, store)
+  }
+  const duration = performance.now() - start
+  console.log(`[Benchmark executeToolCall logging latency]: ${iterations} calls took ${duration.toFixed(2)} ms (avg ${(duration / iterations).toFixed(2)} ms/call)`)
+})
+
 test('executeToolCall rejects invalid tool arguments schema', async () => {
   const store = new Store()
   const enabledTools: ToolDoc[] = [
