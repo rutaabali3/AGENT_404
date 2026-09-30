@@ -204,6 +204,18 @@ export const handlers: Record<string, (args: any) => Promise<any>> = {
   },
   'media.downloadVideo': async a => { await assertSafeUrl(a?.url ?? ''); const outputDir = path.resolve(process.env.OUTPUTS_DIR ?? './sandbox/outputs'); await fs.mkdir(outputDir, { recursive: true }); const template = path.join(outputDir, '%(title).100s.%(ext)s'); try { const { stdout, stderr } = await exec('yt-dlp', ['--no-playlist', '-o', template, '--', a.url], { maxBuffer: 1024 * 1024 }); return { provider: 'yt-dlp', stdout, stderr, outputs: await fs.readdir(outputDir) } } catch (error: any) { return { error: `yt-dlp unavailable or download failed: ${error.message}`, hint: 'Install yt-dlp locally to enable download_video.' } } },
 }
-for (const tool of defaultTools.filter(t => t.handler.startsWith('ahm7.'))) handlers[tool.handler] = async () => ({ error: 'AHM7 integration is registered but not configured in this local build.' })
-export function toolSchemas(tools: ToolDoc[]) { return tools.filter(t => t.enabled).map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })) }
+for (const tool of defaultTools) {
+  if (tool.handler.startsWith('ahm7.')) {
+    handlers[tool.handler] = async () => ({ error: 'AHM7 integration is registered but not configured in this local build.' })
+  }
+}
+export function toolSchemas(tools: ToolDoc[]) {
+  const schemas = []
+  for (const t of tools) {
+    if (t.enabled) {
+      schemas.push({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })
+    }
+  }
+  return schemas
+}
 export async function runTool(tool: ToolDoc, args: any) { if (!tool.enabled) throw new Error(`Tool ${tool.name} is disabled`); const handler = handlers[tool.handler]; if (!handler) throw new Error(`No handler for ${tool.name} (${tool.handler})`); return handler(args) }

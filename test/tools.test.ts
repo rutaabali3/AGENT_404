@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
+import axios from 'axios'
+import { listFiles, runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
 
 const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
@@ -295,6 +296,64 @@ test('web.fetch follows safe redirects and resolves relative location headers', 
   } finally {
     axios.get = originalGet
   }
+})
+
+test('benchmark tool iteration and schema generation allocation', () => {
+  const defaultToolsMock: ToolDoc[] = Array.from({ length: 100 }, (_, i) => ({
+    name: `tool_${i}`,
+    description: `Description ${i}`,
+    category: i % 2 === 0 ? 'media' : 'filesystem',
+    enabled: i % 2 === 0,
+    requires_sandbox: false,
+    parameters: { type: 'object', properties: { p: { type: 'string' } } },
+    handler: i % 3 === 0 ? `ahm7.tool_${i}` : `custom.tool_${i}`
+  }))
+
+  const iterations = 50000
+
+  // Measure filter + for..of vs single loop with if
+  const startOld = performance.now()
+  for (let iter = 0; iter < iterations; iter++) {
+    const handlersMock: Record<string, any> = {}
+    for (const tool of defaultToolsMock.filter(t => t.handler.startsWith('ahm7.'))) {
+      handlersMock[tool.handler] = true
+    }
+  }
+  const durationOld = performance.now() - startOld
+
+  const startNew = performance.now()
+  for (let iter = 0; iter < iterations; iter++) {
+    const handlersMock: Record<string, any> = {}
+    for (const tool of defaultToolsMock) {
+      if (tool.handler.startsWith('ahm7.')) {
+        handlersMock[tool.handler] = true
+      }
+    }
+  }
+  const durationNew = performance.now() - startNew
+
+  console.log(`[Benchmark] Tool handler iteration (${iterations} ops):`)
+  console.log(`  With filter (intermediate array): ${durationOld.toFixed(2)} ms`)
+  console.log(`  Direct loop with if: ${durationNew.toFixed(2)} ms`)
+  console.log(`  Speedup: ${(durationOld / durationNew).toFixed(2)}x`)
+
+  // Measure toolSchemas filter.map vs single loop with push
+  const startSchemasOld = performance.now()
+  for (let iter = 0; iter < iterations; iter++) {
+    const schemas = defaultToolsMock.filter(t => t.enabled).map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }))
+  }
+  const durationSchemasOld = performance.now() - startSchemasOld
+
+  const startSchemasNew = performance.now()
+  for (let iter = 0; iter < iterations; iter++) {
+    const schemas = toolSchemas(defaultToolsMock)
+  }
+  const durationSchemasNew = performance.now() - startSchemasNew
+
+  console.log(`[Benchmark] toolSchemas generation (${iterations} ops):`)
+  console.log(`  Filter + map: ${durationSchemasOld.toFixed(2)} ms`)
+  console.log(`  Single loop (toolSchemas): ${durationSchemasNew.toFixed(2)} ms`)
+  console.log(`  Speedup: ${(durationSchemasOld / durationSchemasNew).toFixed(2)}x`)
 })
 
 test('web.fetch blocks HTTP redirects to internal/private hostnames or IP addresses (SSRF prevention)', async () => {
