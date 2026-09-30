@@ -50,17 +50,19 @@ test('securityHeaders sets expected HTTP response headers and calls next', () =>
   assert.equal(headersSet['Referrer-Policy'], 'no-referrer')
 })
 
-test('requireApiKey allows request when LOCAL_AGENT_API_KEY is not set', () => {
+test('requireApiKey rejects request with 500 when LOCAL_AGENT_API_KEY is not set', () => {
   const originalEnv = process.env.LOCAL_AGENT_API_KEY
   delete process.env.LOCAL_AGENT_API_KEY
 
   try {
     let nextCalled = false
-    const { req, res } = createMockReqRes()
+    const { req, res, getStatus, getJson } = createMockReqRes()
     requireApiKey(req, res, () => {
       nextCalled = true
     })
-    assert.equal(nextCalled, true)
+    assert.equal(nextCalled, false)
+    assert.equal(getStatus(), 500)
+    assert.deepEqual(getJson(), { error: 'Server API key is not configured' })
   } finally {
     if (originalEnv !== undefined) {
       process.env.LOCAL_AGENT_API_KEY = originalEnv

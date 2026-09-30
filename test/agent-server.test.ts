@@ -114,6 +114,24 @@ test('GET /api/health reflects MONGODB_URI presence', async () => {
   }
 })
 
+test('Protected /api routes return 500 when LOCAL_AGENT_API_KEY is not set', async () => {
+  const originalApiKey = process.env.LOCAL_AGENT_API_KEY
+  delete process.env.LOCAL_AGENT_API_KEY
+
+  try {
+    const app = createApp()
+    const mockUnconfigured = createMockReqRes({ method: 'GET', url: '/api/tools' })
+    await dispatchRequest(app, mockUnconfigured)
+
+    assert.equal(mockUnconfigured.getStatus(), 500)
+    assert.deepEqual(mockUnconfigured.getJson(), { error: 'Server API key is not configured' })
+  } finally {
+    if (originalApiKey !== undefined) {
+      process.env.LOCAL_AGENT_API_KEY = originalApiKey
+    }
+  }
+})
+
 test('Protected /api routes require API key when LOCAL_AGENT_API_KEY is set', async () => {
   const originalApiKey = process.env.LOCAL_AGENT_API_KEY
   process.env.LOCAL_AGENT_API_KEY = 'test-secret-key'
@@ -145,42 +163,71 @@ test('Protected /api routes require API key when LOCAL_AGENT_API_KEY is set', as
 })
 
 test('GET /api/tools returns available tools', async () => {
-  const store = new Store()
-  const app = createApp(store)
-  const mock = createMockReqRes({ method: 'GET', url: '/api/tools' })
-  await dispatchRequest(app, mock)
+  const originalApiKey = process.env.LOCAL_AGENT_API_KEY
+  process.env.LOCAL_AGENT_API_KEY = 'test-secret-key'
 
-  assert.equal(mock.getStatus(), 200)
-  const tools = mock.getJson() as any[]
-  assert.ok(Array.isArray(tools))
-  assert.ok(tools.length > 0)
-  assert.ok(tools.some((t) => t.name === 'execute_python'))
+  try {
+    const store = new Store()
+    const app = createApp(store)
+    const mock = createMockReqRes({
+      method: 'GET',
+      url: '/api/tools',
+      headers: { 'x-api-key': 'test-secret-key' }
+    })
+    await dispatchRequest(app, mock)
+
+    assert.equal(mock.getStatus(), 200)
+    const tools = mock.getJson() as any[]
+    assert.ok(Array.isArray(tools))
+    assert.ok(tools.length > 0)
+    assert.ok(tools.some((t) => t.name === 'execute_python'))
+  } finally {
+    if (originalApiKey !== undefined) {
+      process.env.LOCAL_AGENT_API_KEY = originalApiKey
+    } else {
+      delete process.env.LOCAL_AGENT_API_KEY
+    }
+  }
 })
 
 test('PATCH /api/tools/:name toggles tool status', async () => {
-  const store = new Store()
-  const toolsMap = new Map<string, ToolDoc>(defaultTools.map((t) => [t.name, { ...t }]))
-  store.setTool = async (name: string, enabled: boolean) => {
-    const tool = toolsMap.get(name)
-    if (tool) tool.enabled = enabled
-    return tool
+  const originalApiKey = process.env.LOCAL_AGENT_API_KEY
+  process.env.LOCAL_AGENT_API_KEY = 'test-secret-key'
+
+  try {
+    const store = new Store()
+    const toolsMap = new Map<string, ToolDoc>(defaultTools.map((t) => [t.name, { ...t }]))
+    store.setTool = async (name: string, enabled: boolean) => {
+      const tool = toolsMap.get(name)
+      if (tool) tool.enabled = enabled
+      return tool
+    }
+
+    const app = createApp(store)
+    const mock = createMockReqRes({
+      method: 'PATCH',
+      url: '/api/tools/web_search_tavily',
+      headers: { 'x-api-key': 'test-secret-key' },
+      body: { enabled: true }
+    })
+    await dispatchRequest(app, mock)
+
+    assert.equal(mock.getStatus(), 200)
+    const updatedTool = mock.getJson() as any
+    assert.equal(updatedTool.name, 'web_search_tavily')
+    assert.equal(updatedTool.enabled, true)
+  } finally {
+    if (originalApiKey !== undefined) {
+      process.env.LOCAL_AGENT_API_KEY = originalApiKey
+    } else {
+      delete process.env.LOCAL_AGENT_API_KEY
+    }
   }
-
-  const app = createApp(store)
-  const mock = createMockReqRes({
-    method: 'PATCH',
-    url: '/api/tools/web_search_tavily',
-    body: { enabled: true }
-  })
-  await dispatchRequest(app, mock)
-
-  assert.equal(mock.getStatus(), 200)
-  const updatedTool = mock.getJson() as any
-  assert.equal(updatedTool.name, 'web_search_tavily')
-  assert.equal(updatedTool.enabled, true)
 })
 
 test('POST /api/chat delegates to handleChatRequest', async () => {
+  const originalApiKey = process.env.LOCAL_AGENT_API_KEY
+  process.env.LOCAL_AGENT_API_KEY = 'test-secret-key'
   const store = new Store()
   const app = createApp(store)
   const originalDeepseekKey = process.env.DEEPSEEK_API_KEY
@@ -190,6 +237,7 @@ test('POST /api/chat delegates to handleChatRequest', async () => {
     const mockInvalid = createMockReqRes({
       method: 'POST',
       url: '/api/chat',
+      headers: { 'x-api-key': 'test-secret-key' },
       body: { message: '' }
     })
     await dispatchRequest(app, mockInvalid)
@@ -200,6 +248,7 @@ test('POST /api/chat delegates to handleChatRequest', async () => {
     const mockValid = createMockReqRes({
       method: 'POST',
       url: '/api/chat',
+      headers: { 'x-api-key': 'test-secret-key' },
       body: { message: 'Hello agent' }
     })
     await dispatchRequest(app, mockValid)
@@ -207,6 +256,11 @@ test('POST /api/chat delegates to handleChatRequest', async () => {
     assert.equal(mockValid.getStatus(), 200)
     assert.match(mockValid.getJson().message, /DeepSeek is not configured yet/)
   } finally {
+    if (originalApiKey !== undefined) {
+      process.env.LOCAL_AGENT_API_KEY = originalApiKey
+    } else {
+      delete process.env.LOCAL_AGENT_API_KEY
+    }
     if (originalDeepseekKey !== undefined) {
       process.env.DEEPSEEK_API_KEY = originalDeepseekKey
     }
