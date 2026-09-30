@@ -221,3 +221,31 @@ test('Wildcard route serves public index.html SPA fallback', async () => {
   assert.equal(mock.getStatus(), 200)
   assert.equal(mock.getSentFile(), path.resolve('public/index.html'))
 })
+
+test('Static files and SPA fallback routes include security headers', async () => {
+  const app = createApp()
+  const server = app.listen(0)
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to start test server')
+  }
+  const port = address.port
+
+  try {
+    const resStatic = await fetch(`http://127.0.0.1:${port}/styles.css`)
+    assert.equal(resStatic.status, 200)
+    assert.equal(resStatic.headers.get('x-content-type-options'), 'nosniff')
+    assert.equal(resStatic.headers.get('x-frame-options'), 'DENY')
+    assert.equal(resStatic.headers.get('x-xss-protection'), '0')
+    assert.equal(resStatic.headers.get('referrer-policy'), 'no-referrer')
+
+    const resFallback = await fetch(`http://127.0.0.1:${port}/some/client/route`)
+    assert.equal(resFallback.status, 200)
+    assert.equal(resFallback.headers.get('x-content-type-options'), 'nosniff')
+    assert.equal(resFallback.headers.get('x-frame-options'), 'DENY')
+    assert.equal(resFallback.headers.get('x-xss-protection'), '0')
+    assert.equal(resFallback.headers.get('referrer-policy'), 'no-referrer')
+  } finally {
+    server.close()
+  }
+})
