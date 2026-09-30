@@ -4,16 +4,16 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Store } from './agent/store.js'
 import { handleChatRequest } from './agent/chat.js'
-import { requireApiKey, securityHeaders } from './agent/auth.js'
+import { requireApiKey, securityHeaders, chatRateLimiter } from './agent/auth.js'
 
 export { requireApiKey, securityHeaders, chatRateLimiter }
 
 export function createApp(store: Store = new Store()) {
   const app = express()
 
+  app.use(securityHeaders)
   app.use(express.json({ limit: '2mb' }))
   app.use(express.static(path.resolve('public')))
-  app.use(securityHeaders)
 
   app.get('/api/health', (_req, res) => {
     res.json({
