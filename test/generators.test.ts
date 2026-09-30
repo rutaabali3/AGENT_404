@@ -5,6 +5,39 @@ import fs from 'node:fs/promises'
 import axios from 'axios'
 import { convertToPdf, generateDocx, generateXlsx, generatePptx } from '../src/agent/generators.js'
 
+test('generateXlsx sanitizes cells starting with formula injection characters', async () => {
+  const ExcelJS = (await import('exceljs')).default
+  const filename = 'formula_test.xlsx'
+  const testData = [
+    ['Header1', 'Header2', 'Header3', 'Header4', 'Header5', 'Header6', 'Header7', 'Header8'],
+    ['=SUM(1,2)', '+12345', '-500', '@admin', '\ttab', '\rreturn', 'Safe string', 123]
+  ]
+
+  const res = await generateXlsx({ data: testData, filename })
+  assert.equal(res.path, 'formula_test.xlsx')
+
+  const outputs = path.resolve('./sandbox/outputs')
+  const filePath = path.join(outputs, 'formula_test.xlsx')
+
+  const workbook = new ExcelJS.Workbook()
+  await workbook.xlsx.readFile(filePath)
+  const sheet = workbook.getWorksheet('Data')
+  assert.ok(sheet)
+
+  const row2 = sheet.getRow(2)
+  assert.equal(row2.getCell(1).value, "'=SUM(1,2)")
+  assert.equal(row2.getCell(2).value, "'+12345")
+  assert.equal(row2.getCell(3).value, "'-500")
+  assert.equal(row2.getCell(4).value, "'@admin")
+  assert.equal(row2.getCell(5).value, "'\ttab")
+  assert.ok(String(row2.getCell(6).value).startsWith("'"))
+  assert.ok(String(row2.getCell(6).value).includes('return'))
+  assert.equal(row2.getCell(7).value, 'Safe string')
+  assert.equal(row2.getCell(8).value, 123)
+
+  await fs.rm(filePath, { force: true })
+})
+
 test('outputPath sanitizes path traversal attempts and keeps output inside outputs directory', async () => {
   const resPdf = await convertToPdf({ content: 'Test PDF', filename: '../../test_traversal.pdf' })
   assert.equal(resPdf.path, 'test_traversal.pdf')
