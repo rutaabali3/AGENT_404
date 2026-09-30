@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
+import axios from 'axios'
+import { runTool, toolSchemas, handlers, readFile, writeFile, listFiles } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
 
 const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
@@ -292,6 +293,61 @@ test('web.fetch follows safe redirects and resolves relative location headers', 
       'https://example.org/final'
     ])
     assert.equal(res.trim(), 'Success Page')
+  } finally {
+    axios.get = originalGet
+  }
+})
+
+test('web.searchSearxng returns error and fallback when SearXNG fails and TAVILY_API_KEY is not configured', async () => {
+  const searchSearxngHandler = handlers['web.searchSearxng']
+  const originalGet = axios.get
+  const originalTavilyKey = process.env.TAVILY_API_KEY
+
+  delete process.env.TAVILY_API_KEY
+  axios.get = (async () => {
+    throw new Error('Connection refused')
+  }) as any
+
+  try {
+    const result = await searchSearxngHandler({ query: 'typescript' })
+    assert.deepEqual(result, {
+      error: 'SearXNG unavailable: Connection refused',
+      fallback: 'TAVILY_API_KEY is not configured'
+    })
+  } finally {
+    axios.get = originalGet
+    if (originalTavilyKey === undefined) delete process.env.TAVILY_API_KEY
+    else process.env.TAVILY_API_KEY = originalTavilyKey
+  }
+})
+
+test('web.searchSearxng returns searxng provider and results when request succeeds', async () => {
+  const searchSearxngHandler = handlers['web.searchSearxng']
+  const originalGet = axios.get
+
+  axios.get = (async (url: string, config: any) => {
+    assert.equal(config.params.q, 'testing')
+    assert.equal(config.params.format, 'json')
+    assert.equal(config.timeout, 10000)
+    return {
+      data: {
+        results: [
+          { title: 'Doc 1', url: 'https://example.com/1' },
+          { title: 'Doc 2', url: 'https://example.com/2' }
+        ]
+      }
+    }
+  }) as any
+
+  try {
+    const result = await searchSearxngHandler({ query: 'testing' })
+    assert.deepEqual(result, {
+      provider: 'searxng',
+      results: [
+        { title: 'Doc 1', url: 'https://example.com/1' },
+        { title: 'Doc 2', url: 'https://example.com/2' }
+      ]
+    })
   } finally {
     axios.get = originalGet
   }
