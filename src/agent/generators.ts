@@ -94,7 +94,9 @@ export async function generateXlsx(args: { data: unknown[]; filename?: string })
     header.alignment = { vertical: 'middle' }
   }
 
-  normalized.slice(1).forEach(row => sheet.addRow(row))
+  for (let i = 1; i < normalized.length; i++) {
+    sheet.addRow(normalized[i])
+  }
   sheet.views = [{ state: 'frozen', ySplit: 1 }]
   sheet.columns.forEach(column => {
     const columnNumber = column.number ?? 1
