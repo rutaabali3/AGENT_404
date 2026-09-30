@@ -168,3 +168,53 @@ test('media.downloadVideo prevents SSRF and non-http(s) requests', async () => {
     })
   }
 })
+
+test('generateXlsx generates valid xlsx file with multiple data rows', async () => {
+  const data = [
+    ['Header1', 'Header2', 'Header3'],
+    ['Row1Val1', 'Row1Val2', 'Row1Val3'],
+    ['Row2Val1', 'Row2Val2', 'Row2Val3'],
+    ['Row3Val1', 'Row3Val2', 'Row3Val3']
+  ]
+  const res = await generateXlsx({ data, filename: 'test_multi_row.xlsx' })
+  assert.equal(res.path, 'test_multi_row.xlsx')
+  assert.equal(res.rows, 4)
+  assert.ok(res.bytes > 0)
+
+  // Clean up
+  const outputs = path.resolve('./sandbox/outputs')
+  await fs.rm(path.join(outputs, 'test_multi_row.xlsx'), { force: true })
+})
+
+test('benchmark array slice vs index for loop for generateXlsx row addition', () => {
+  const rowsCount = 100000
+  const normalized: unknown[][] = new Array(rowsCount)
+  for (let i = 0; i < rowsCount; i++) {
+    normalized[i] = [`ColA_${i}`, `ColB_${i}`, i]
+  }
+
+  // Benchmark slice(1).forEach
+  const startSlice = performance.now()
+  let countSlice = 0
+  normalized.slice(1).forEach(row => {
+    countSlice++
+  })
+  const endSlice = performance.now()
+  const sliceDuration = endSlice - startSlice
+
+  // Benchmark index for loop
+  const startFor = performance.now()
+  let countFor = 0
+  for (let i = 1; i < normalized.length; i++) {
+    countFor++
+  }
+  const endFor = performance.now()
+  const forDuration = endFor - startFor
+
+  assert.equal(countSlice, rowsCount - 1)
+  assert.equal(countFor, rowsCount - 1)
+
+  console.log(`\n# [Benchmark] slice(1).forEach (${rowsCount} rows): ${sliceDuration.toFixed(2)} ms`)
+  console.log(`# [Benchmark] for loop (${rowsCount} rows): ${forDuration.toFixed(2)} ms`)
+  console.log(`# [Benchmark] Speedup: ${(sliceDuration / Math.max(0.0001, forDuration)).toFixed(1)}x faster\n`)
+})
