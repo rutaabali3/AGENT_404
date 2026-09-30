@@ -16,6 +16,8 @@ function createMockReqRes(options: {
   req.url = options.url ?? '/'
   req.headers = options.headers ?? {}
   req.body = options.body
+  req.ip = '127.0.0.1'
+  req.socket = { remoteAddress: '127.0.0.1' }
   req.query = {}
 
   const resHeaders: Record<string, string> = {}
@@ -180,7 +182,7 @@ test('PATCH /api/tools/:name toggles tool status', async () => {
   assert.equal(updatedTool.enabled, true)
 })
 
-test('POST /api/chat delegates to handleChatRequest', async () => {
+test('POST /api/chat delegates to handleChatRequest and enforces rate limiting', async () => {
   const store = new Store()
   const app = createApp(store)
   const originalDeepseekKey = process.env.DEEPSEEK_API_KEY
@@ -196,6 +198,7 @@ test('POST /api/chat delegates to handleChatRequest', async () => {
 
     assert.equal(mockInvalid.getStatus(), 400)
     assert.equal(mockInvalid.getJson().error, 'Message is required')
+    assert.ok(mockInvalid.getHeaders()['ratelimit-limit'])
 
     const mockValid = createMockReqRes({
       method: 'POST',
@@ -206,6 +209,7 @@ test('POST /api/chat delegates to handleChatRequest', async () => {
 
     assert.equal(mockValid.getStatus(), 200)
     assert.match(mockValid.getJson().message, /DeepSeek is not configured yet/)
+    assert.ok(mockValid.getHeaders()['ratelimit-limit'])
   } finally {
     if (originalDeepseekKey !== undefined) {
       process.env.DEEPSEEK_API_KEY = originalDeepseekKey
