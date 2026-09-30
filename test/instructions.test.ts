@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs/promises'
 import { listSkillCatalog, loadRules, loadRelevantSkills, clearInstructionsCache } from '../src/agent/instructions.js'
 
 test('listSkillCatalog loads skills catalog concurrently and caches output', async () => {
@@ -73,6 +74,33 @@ test('clearInstructionsCache clears memory cache', async () => {
   clearInstructionsCache()
   const relevant = await loadRelevantSkills('pdf')
   assert.ok(relevant.includes('pdf'))
+})
+
+test('listSkillCatalog handles read error for a specific skill and filters it out', async () => {
+  clearInstructionsCache()
+  const originalReadFile = fs.readFile
+
+  try {
+    fs.readFile = (async (filePath: any, options: any) => {
+      if (typeof filePath === 'string' && filePath.includes('code-execution')) {
+        throw new Error('Disk read error for code-execution SKILL.md')
+      }
+      return originalReadFile(filePath, options)
+    }) as typeof fs.readFile
+
+    const catalog = await listSkillCatalog()
+    assert.ok(Array.isArray(catalog))
+    assert.ok(catalog.length > 0)
+
+    const missingSkill = catalog.find(item => item.skill === 'code-execution')
+    assert.strictEqual(missingSkill, undefined)
+
+    const otherSkill = catalog.find(item => item.skill === 'pdf')
+    assert.ok(otherSkill)
+  } finally {
+    fs.readFile = originalReadFile
+    clearInstructionsCache()
+  }
 })
 
 test('loadRelevantSkills handles malformed JSON response from LLM and falls back to keyword matching', async () => {
