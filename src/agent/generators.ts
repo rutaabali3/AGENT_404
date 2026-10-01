@@ -83,7 +83,10 @@ export async function generateXlsx(args: { data: unknown[]; filename?: string })
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet('Data')
   const rows = Array.isArray(args.data) ? args.data : []
-  const normalized = rows.map(row => (Array.isArray(row) ? row : Object.values((row ?? {}) as Record<string, unknown>)))
+  const sanitize = (val: unknown) => (typeof val === 'string' && /^[=+\-@\t\r]/.test(val) ? `'${val}` : val)
+  const normalized = rows.map(row =>
+    (Array.isArray(row) ? row : Object.values((row ?? {}) as Record<string, unknown>)).map(sanitize)
+  )
   const first = normalized[0] ?? []
   sheet.addRow(first)
 
@@ -94,7 +97,9 @@ export async function generateXlsx(args: { data: unknown[]; filename?: string })
     header.alignment = { vertical: 'middle' }
   }
 
-  normalized.slice(1).forEach(row => sheet.addRow(row))
+  for (let i = 1; i < normalized.length; i++) {
+    sheet.addRow(normalized[i])
+  }
   sheet.views = [{ state: 'frozen', ySplit: 1 }]
   sheet.columns.forEach(column => {
     const columnNumber = column.number ?? 1

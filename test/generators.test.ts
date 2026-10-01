@@ -26,6 +26,40 @@ test('outputPath sanitizes path traversal attempts and keeps output inside outpu
   await fs.rm(path.join(outputs, 'test_traversal.pptx'), { force: true })
 })
 
+test('generateXlsx sanitizes cells starting with formula characters', async () => {
+  const ExcelJS = (await import('exceljs')).default
+  const filename = `formula_test_${Date.now()}.xlsx`
+  const data = [
+    ['Header1', 'Header2'],
+    ['=1+1', '+2+2'],
+    ['-3-3', '@SUM(A1:A2)'],
+    ['\tTabPrefixed', '\rCarriagePrefixed'],
+    ['NormalText', 123]
+  ]
+
+  const res = await generateXlsx({ data, filename })
+  const outputs = path.resolve('./sandbox/outputs')
+  const filePath = path.join(outputs, res.path)
+
+  try {
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.readFile(filePath)
+    const sheet = workbook.getWorksheet('Data')
+    assert.ok(sheet)
+
+    assert.equal(sheet.getRow(2).getCell(1).value, "'=1+1")
+    assert.equal(sheet.getRow(2).getCell(2).value, "'+2+2")
+    assert.equal(sheet.getRow(3).getCell(1).value, "'-3-3")
+    assert.equal(sheet.getRow(3).getCell(2).value, "'@SUM(A1:A2)")
+    assert.equal(sheet.getRow(4).getCell(1).value, "'\tTabPrefixed")
+    assert.equal(sheet.getRow(4).getCell(2).value, "'\nCarriagePrefixed")
+    assert.equal(sheet.getRow(5).getCell(1).value, 'NormalText')
+    assert.equal(sheet.getRow(5).getCell(2).value, 123)
+  } finally {
+    await fs.rm(filePath, { force: true })
+  }
+})
+
 test('web.fetch limits maximum response size via maxContentLength and maxBodyLength', async () => {
   const { handlers } = await import('../src/agent/tools.js')
   const fetchHandler = handlers['web.fetch']
