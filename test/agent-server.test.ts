@@ -17,6 +17,8 @@ function createMockReqRes(options: {
   req.headers = options.headers ?? {}
   req.body = options.body
   req.query = {}
+  req.ip = '127.0.0.1'
+  req.app = { get: () => undefined }
 
   const resHeaders: Record<string, string> = {}
   let statusCode = 200
@@ -31,6 +33,7 @@ function createMockReqRes(options: {
     return res
   }
   res.getHeader = (name: string) => resHeaders[name.toLowerCase()]
+  res.ip = '127.0.0.1'
   res.status = (code: number) => {
     statusCode = code
     res.statusCode = code
@@ -180,7 +183,7 @@ test('PATCH /api/tools/:name toggles tool status', async () => {
   assert.equal(updatedTool.enabled, true)
 })
 
-test('POST /api/chat delegates to handleChatRequest', async () => {
+test('POST /api/chat delegates to handleChatRequest and sets rate limit headers', async () => {
   const store = new Store()
   const app = createApp(store)
   const originalDeepseekKey = process.env.DEEPSEEK_API_KEY
@@ -196,6 +199,7 @@ test('POST /api/chat delegates to handleChatRequest', async () => {
 
     assert.equal(mockInvalid.getStatus(), 400)
     assert.equal(mockInvalid.getJson().error, 'Message is required')
+    assert.ok(mockInvalid.getHeaders()['ratelimit-limit'])
 
     const mockValid = createMockReqRes({
       method: 'POST',
