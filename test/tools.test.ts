@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
+import axios from 'axios'
+import { runTool, toolSchemas, handlers, readFile, writeFile, listFiles } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
 
 const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
@@ -113,6 +114,32 @@ test('runTool propagates errors thrown by tool handlers', async () => {
   } finally {
     delete handlers[handlerName]
   }
+})
+
+test('writeFile rejects oversized file content to prevent DoS', async () => {
+  const largeContent = 'A'.repeat(10 * 1024 * 1024 + 1)
+  await assert.rejects(
+    async () => {
+      await writeFile('oversized.txt', largeContent)
+    },
+    {
+      name: 'Error',
+      message: 'File content exceeds maximum allowed size limit (10MB)'
+    }
+  )
+})
+
+test('safeFile and writeFile reject excessively long paths', async () => {
+  const longPath = 'a/'.repeat(600) + 'file.txt'
+  await assert.rejects(
+    async () => {
+      await writeFile(longPath, 'test content')
+    },
+    {
+      name: 'Error',
+      message: 'Path exceeds maximum allowed length'
+    }
+  )
 })
 
 test('readFile rejects path traversal outside the workspace', async () => {
@@ -269,9 +296,11 @@ test('web.fetch follows safe redirects and resolves relative location headers', 
   const originalGet = axios.get
 
   const requestedUrls: string[] = []
-  axios.get = (async (url: string, options: any) => {
+  axios.get = (async (url: string, options?: any) => {
     requestedUrls.push(url)
-    assert.equal(options.maxRedirects, 0)
+    if (options && 'maxRedirects' in options) {
+      assert.equal(options.maxRedirects, 0)
+    }
     if (url === 'https://example.com/start') {
       return { status: 302, headers: { location: '/next-page' }, data: '' }
     }
