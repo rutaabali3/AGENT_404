@@ -107,10 +107,34 @@ export async function assertSafeUrl(urlString: string): Promise<void> {
     throw new Error(`DNS resolution failed for host: ${hostname}`)
   }
 }
-async function safeFile(p = '') { const resolved = path.resolve(root, p); if (resolved !== root && !resolved.startsWith(root + path.sep)) throw new Error('Path is outside the workspace'); return resolved }
+// Maximum limits to prevent path manipulation / OS errors and disk/memory exhaustion DoS attacks
+const MAX_PATH_LENGTH = 1024
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB limit
+
+async function safeFile(p = '') {
+  if (typeof p !== 'string' || p.length > MAX_PATH_LENGTH) {
+    throw new Error('Path exceeds maximum allowed length')
+  }
+  const resolved = path.resolve(root, p)
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    throw new Error('Path is outside the workspace')
+  }
+  return resolved
+}
+
 export async function listFiles() { await fs.mkdir(root, { recursive: true }); return (await fs.readdir(root, { withFileTypes: true })).map(x => ({ name: x.name, type: x.isDirectory() ? 'directory' : 'file' })) }
 export async function readFile(p: string) { return await fs.readFile(await safeFile(p), 'utf8') }
-export async function writeFile(p: string, content: string) { const f = await safeFile(p); await fs.mkdir(path.dirname(f), { recursive: true }); await fs.writeFile(f, content, 'utf8'); return { path: p, bytes: Buffer.byteLength(content) } }
+
+export async function writeFile(p: string, content: string) {
+  const contentBytes = Buffer.byteLength(content ?? '', 'utf8')
+  if (contentBytes > MAX_FILE_SIZE_BYTES) {
+    throw new Error('File content exceeds maximum allowed size limit (10MB)')
+  }
+  const f = await safeFile(p)
+  await fs.mkdir(path.dirname(f), { recursive: true })
+  await fs.writeFile(f, content, 'utf8')
+  return { path: p, bytes: contentBytes }
+}
 async function dockerRun(language: 'python' | 'node', code: string) {
   const host = path.resolve(process.cwd(), 'sandbox')
   const work = path.join(host, 'workspace')
