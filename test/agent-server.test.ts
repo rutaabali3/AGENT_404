@@ -17,6 +17,8 @@ function createMockReqRes(options: {
   req.headers = options.headers ?? {}
   req.body = options.body
   req.query = {}
+  req.ip = '127.0.0.1'
+  req.socket = { remoteAddress: '127.0.0.1' }
 
   const resHeaders: Record<string, string> = {}
   let statusCode = 200
@@ -206,6 +208,7 @@ test('POST /api/chat delegates to handleChatRequest', async () => {
 
     assert.equal(mockValid.getStatus(), 200)
     assert.match(mockValid.getJson().message, /DeepSeek is not configured yet/)
+    assert.ok(mockValid.getHeaders()['ratelimit-limit'])
   } finally {
     if (originalDeepseekKey !== undefined) {
       process.env.DEEPSEEK_API_KEY = originalDeepseekKey
