@@ -17,6 +17,7 @@ function createMockReqRes(options: {
   req.headers = options.headers ?? {}
   req.body = options.body
   req.query = {}
+  req.socket = { remoteAddress: '127.0.0.1' }
 
   const resHeaders: Record<string, string> = {}
   let statusCode = 200

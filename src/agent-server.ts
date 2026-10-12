@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Store } from './agent/store.js'
 import { handleChatRequest } from './agent/chat.js'
-import { requireApiKey, securityHeaders } from './agent/auth.js'
+import { requireApiKey, securityHeaders, chatRateLimiter } from './agent/auth.js'
 
 export { requireApiKey, securityHeaders, chatRateLimiter }
 
@@ -36,7 +36,8 @@ export function createApp(store: Store = new Store()) {
     res.json(await store.setTool(name, enabled))
   })
 
-  app.post('/api/chat', async (req, res) => {
+  // Rate limit /api/chat requests to prevent request flooding and API quota exhaustion DoS
+  app.post('/api/chat', chatRateLimiter, async (req, res) => {
     const result = await handleChatRequest(req.body ?? {}, store)
     res.status(result.status).json(result.body)
   })
