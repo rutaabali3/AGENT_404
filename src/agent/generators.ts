@@ -28,6 +28,13 @@ function lines(content: string) {
   return String(content).split(/\r?\n/).map(line => line.trim()).filter(Boolean)
 }
 
+function sanitizeCell(value: unknown): unknown {
+  if (typeof value === 'string' && /^[=+@\t\r-]/.test(value)) {
+    return `'${value}`
+  }
+  return value
+}
+
 export async function convertToPdf(args: { content: string; filename?: string }) {
   const target = await prepareOutputFile(args.filename, 'pdf')
   const doc = new PDFDocument({ margin: 54 })
@@ -83,7 +90,10 @@ export async function generateXlsx(args: { data: unknown[]; filename?: string })
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet('Data')
   const rows = Array.isArray(args.data) ? args.data : []
-  const normalized = rows.map(row => (Array.isArray(row) ? row : Object.values((row ?? {}) as Record<string, unknown>)))
+  const normalized = rows.map(row => {
+    const rawCells = Array.isArray(row) ? row : Object.values((row ?? {}) as Record<string, unknown>)
+    return rawCells.map(sanitizeCell)
+  })
   const first = normalized[0] ?? []
   sheet.addRow(first)
 

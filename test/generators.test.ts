@@ -5,6 +5,42 @@ import fs from 'node:fs/promises'
 import axios from 'axios'
 import { convertToPdf, generateDocx, generateXlsx, generatePptx } from '../src/agent/generators.js'
 
+test('generateXlsx sanitizes formula injection characters in cell string values', async () => {
+  const ExcelJS = (await import('exceljs')).default
+  const outputs = path.resolve('./sandbox/outputs')
+  const filename = 'formula_test.xlsx'
+
+  const rawData = [
+    ['Header1', 'Header2', 'Header3'],
+    ['=SUM(1,2)', '+12345', '-54321'],
+    ['@cmd', '\tTabLeading', '=1+1'],
+    ['Normal text', 12345, true]
+  ]
+
+  const result = await generateXlsx({ data: rawData, filename })
+  assert.equal(result.rows, 4)
+
+  const filePath = path.join(outputs, filename)
+  const workbook = new ExcelJS.Workbook()
+  await workbook.xlsx.readFile(filePath)
+  const sheet = workbook.getWorksheet('Data')
+  assert.ok(sheet)
+
+  assert.equal(sheet.getRow(2).getCell(1).value, "'=SUM(1,2)")
+  assert.equal(sheet.getRow(2).getCell(2).value, "'+12345")
+  assert.equal(sheet.getRow(2).getCell(3).value, "'-54321")
+
+  assert.equal(sheet.getRow(3).getCell(1).value, "'@cmd")
+  assert.equal(sheet.getRow(3).getCell(2).value, "'\tTabLeading")
+  assert.equal(sheet.getRow(3).getCell(3).value, "'=1+1")
+
+  assert.equal(sheet.getRow(4).getCell(1).value, 'Normal text')
+  assert.equal(sheet.getRow(4).getCell(2).value, 12345)
+  assert.equal(sheet.getRow(4).getCell(3).value, true)
+
+  await fs.rm(filePath, { force: true })
+})
+
 test('outputPath sanitizes path traversal attempts and keeps output inside outputs directory', async () => {
   const resPdf = await convertToPdf({ content: 'Test PDF', filename: '../../test_traversal.pdf' })
   assert.equal(resPdf.path, 'test_traversal.pdf')
