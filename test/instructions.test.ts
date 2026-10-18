@@ -1,6 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { listSkillCatalog, loadRules, loadRelevantSkills, clearInstructionsCache } from '../src/agent/instructions.js'
+import { listSkillCatalog, loadRules, loadRelevantSkills, clearInstructionsCache, localCompatibilityNotice } from '../src/agent/instructions.js'
+
+test('localCompatibilityNotice returns expected string', () => {
+  const notice = localCompatibilityNotice()
+  assert.ok(typeof notice === 'string')
+  assert.ok(notice.includes('AGENT-420'))
+  assert.ok(notice.includes('local deterministic handlers'))
+})
 
 test('listSkillCatalog loads skills catalog concurrently and caches output', async () => {
   const catalog = await listSkillCatalog()
