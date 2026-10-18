@@ -80,6 +80,10 @@ test('GET /api/health returns health status and security headers', async () => {
     assert.equal(mock.getHeaders()['X-Frame-Options'], 'DENY')
     assert.equal(mock.getHeaders()['X-XSS-Protection'], '0')
     assert.equal(mock.getHeaders()['Referrer-Policy'], 'no-referrer')
+    assert.equal(
+      mock.getHeaders()['Content-Security-Policy'],
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none';"
+    )
 
     assert.deepEqual(mock.getJson(), {
       ok: true,

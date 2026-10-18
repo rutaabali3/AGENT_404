@@ -25,6 +25,11 @@ export function securityHeaders(_req: Request, res: Response, next: NextFunction
   res.setHeader('X-Frame-Options', 'DENY')
   res.setHeader('X-XSS-Protection', '0')
   res.setHeader('Referrer-Policy', 'no-referrer')
+  // Enforce Content-Security-Policy to mitigate XSS and framing attacks
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none';"
+  )
   next()
 }
 
