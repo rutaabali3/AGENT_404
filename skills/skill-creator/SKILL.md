@@ -157,7 +157,7 @@ python /home/ubuntu/skills/skill-creator/scripts/init_skill.py <skill-name>
 The script:
 
 - Creates the skill directory at `/home/ubuntu/skills/<skill-name>/`
-- Generates a SKILL.md template with proper frontmatter and TODO placeholders
+- Generates a SKILL.md template with proper frontmatter and placeholders
 - Creates example resource directories: `scripts/`, `references/`, and `templates/`
 - Adds example files in each directory that can be customized or deleted
 
