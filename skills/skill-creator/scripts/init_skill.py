@@ -29,7 +29,7 @@ description: [TODO: Complete and informative explanation of what the skill does 
 
 ## Structuring This Skill
 
-[TODO: Choose the structure that best fits this skill's purpose. Common patterns:
+[TODO: Choose the structure that best fits this skill's purpose. Common patterns:]
 
 **1. Workflow-Based** (best for sequential processes)
 - Works well when there are clear step-by-step procedures
@@ -53,7 +53,7 @@ description: [TODO: Complete and informative explanation of what the skill does 
 
 Patterns can be mixed and matched as needed. Most skills combine patterns (e.g., start with task-based, add workflow for complex operations).
 
-Delete this entire "Structuring This Skill" section when done - it's just guidance.]
+[TODO: Delete this entire "Structuring This Skill" section when done - it's just guidance.]
 
 ## [TODO: Replace with the first main section based on chosen structure]
 
