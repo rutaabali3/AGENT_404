@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { listSkillCatalog, loadRules, loadRelevantSkills, clearInstructionsCache } from '../src/agent/instructions.js'
+import { listSkillCatalog, loadRules, loadRelevantSkills, clearInstructionsCache, loadSkillForTool } from '../src/agent/instructions.js'
 
 test('listSkillCatalog loads skills catalog concurrently and caches output', async () => {
   const catalog = await listSkillCatalog()
@@ -21,6 +21,15 @@ test('listSkillCatalog loads skills catalog concurrently and caches output', asy
   // Verify second invocation returns cached catalog
   const catalogCached = await listSkillCatalog()
   assert.strictEqual(catalog, catalogCached)
+})
+
+test('loadSkillForTool returns appropriate skill content for a tool', async () => {
+  const content = await loadSkillForTool('execute_python')
+  assert.ok(typeof content === 'string' && content.length > 0)
+
+  // Try an invalid tool name
+  const emptyContent = await loadSkillForTool('invalid_tool_name_xyz')
+  assert.strictEqual(emptyContent, '')
 })
 
 test('loadRules and loadRelevantSkills return expected content', async () => {
