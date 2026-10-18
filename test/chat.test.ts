@@ -162,3 +162,24 @@ test('toolSchemas performance in loop benchmark', async () => {
 
   assert.ok(durationNew < durationOld)
 })
+
+test('handleChatRequest returns 500 when fetch throws an error', async () => {
+  const store = new Store()
+  const originalKey = process.env.DEEPSEEK_API_KEY
+  process.env.DEEPSEEK_API_KEY = 'test-key'
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => { throw new Error('Simulated fetch error') }
+  try {
+    const res = await handleChatRequest({ message: 'hello' }, store)
+    assert.equal(res.status, 500)
+    assert.equal(res.body.error, 'Simulated fetch error')
+    assert.deepEqual(res.body.steps, [])
+  } finally {
+    if (originalKey !== undefined) {
+      process.env.DEEPSEEK_API_KEY = originalKey
+    } else {
+      delete process.env.DEEPSEEK_API_KEY
+    }
+    globalThis.fetch = originalFetch
+  }
+})
