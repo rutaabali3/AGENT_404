@@ -162,3 +162,51 @@ test('toolSchemas performance in loop benchmark', async () => {
 
   assert.ok(durationNew < durationOld)
 })
+
+test('executeToolCall catches errors thrown by tool handler', async () => {
+  const store = new Store()
+  const enabledTools: ToolDoc[] = [
+    {
+      name: 'broken_tool',
+      description: 'A tool that throws an error',
+      category: 'test',
+      enabled: true,
+      requires_sandbox: false,
+      parameters: { type: 'object', properties: {} },
+      handler: 'nonexistent.handler'
+    }
+  ]
+
+  const call = {
+    id: 'call_broken',
+    function: {
+      name: 'broken_tool',
+      arguments: '{}'
+    }
+  }
+
+  const result = await executeToolCall(call, enabledTools, store)
+  assert.equal(result.step.tool, 'broken_tool')
+  assert.match(result.step.result.error, /No handler for broken_tool \(nonexistent.handler\)/)
+})
+
+test('executeToolCall throws error when tool is not registered', async () => {
+  const store = new Store()
+  const call = {
+    id: 'call_missing',
+    function: {
+      name: 'missing_tool',
+      arguments: '{}'
+    }
+  }
+
+  await assert.rejects(
+    async () => {
+      await executeToolCall(call, [], store)
+    },
+    (err: Error) => {
+      assert.match(err.message, /Tool missing_tool is not registered/)
+      return true
+    }
+  )
+})
