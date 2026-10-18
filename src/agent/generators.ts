@@ -32,29 +32,33 @@ export async function convertToPdf(args: { content: string; filename?: string })
   const target = await prepareOutputFile(args.filename, 'pdf')
   const doc = new PDFDocument({ margin: 54 })
   const chunks: Buffer[] = []
-  doc.on('data', chunk => chunks.push(chunk))
-  const done = new Promise<void>((resolve, reject) => {
+
+  await new Promise<void>((resolve, reject) => {
+    doc.on('data', chunk => chunks.push(chunk))
     doc.on('end', () => resolve())
     doc.on('error', reject)
+
+    try {
+      for (const line of lines(args.content)) {
+        const heading = /^(#{1,3})\s+(.+)$/.exec(line)
+        if (heading) {
+          doc.fontSize(heading[1].length === 1 ? 20 : 15)
+             .font('Helvetica-Bold')
+             .text(heading[2])
+             .moveDown(0.4)
+        } else {
+          doc.fontSize(11)
+             .font('Helvetica')
+             .text(line)
+             .moveDown(0.35)
+        }
+      }
+      doc.end()
+    } catch (err) {
+      reject(err)
+    }
   })
 
-  for (const line of lines(args.content)) {
-    const heading = /^(#{1,3})\s+(.+)$/.exec(line)
-    if (heading) {
-      doc.fontSize(heading[1].length === 1 ? 20 : 15)
-         .font('Helvetica-Bold')
-         .text(heading[2])
-         .moveDown(0.4)
-    } else {
-      doc.fontSize(11)
-         .font('Helvetica')
-         .text(line)
-         .moveDown(0.35)
-    }
-  }
-
-  doc.end()
-  await done
   await fs.writeFile(target, Buffer.concat(chunks))
   return { path: path.relative(outputs, target), bytes: (await fs.stat(target)).size }
 }
