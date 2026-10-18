@@ -145,7 +145,12 @@ export async function loadRelevantSkills(request: string, maxSkills = 4) {
 
   if (skills.length === 0) {
     const selected: string[] = []
-    for (const [pattern, skill] of keywordToSkill) if (pattern.test(request) && !selected.includes(skill)) selected.push(skill)
+    for (const [pattern, skill] of keywordToSkill) {
+      if (pattern.test(request) && !selected.includes(skill)) {
+        selected.push(skill)
+        if (selected.length >= maxSkills) break
+      }
+    }
     skills = selected
   }
 
