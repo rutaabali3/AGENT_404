@@ -1,9 +1,36 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { MongoClient } from 'mongodb'
-import { Store, defaultTools } from '../src/agent/store.js'
+import { Store, defaultTools, type ToolDoc } from '../src/agent/store.js'
 
 import type { Db } from 'mongodb'
+
+test('ToolDoc interface - defaultTools should conform to ToolDoc structure', () => {
+  assert.ok(defaultTools.length > 0)
+
+  for (const tool of defaultTools) {
+    // Type assignment check during compilation
+    const doc: ToolDoc = tool
+
+    // Runtime structure checks
+    assert.equal(typeof doc.name, 'string')
+    assert.ok(doc.name.length > 0)
+
+    assert.equal(typeof doc.description, 'string')
+    assert.ok(doc.description.length > 0)
+
+    assert.equal(typeof doc.category, 'string')
+    assert.ok(doc.category.length > 0)
+
+    assert.equal(typeof doc.enabled, 'boolean')
+    assert.equal(typeof doc.requires_sandbox, 'boolean')
+
+    assert.ok(doc.parameters !== null && typeof doc.parameters === 'object')
+
+    assert.equal(typeof doc.handler, 'string')
+    assert.ok(doc.handler.length > 0)
+  }
+})
 
 test('Store - disconnected fallback behavior', async () => {
   const store = new Store(undefined) // No MongoDB URI

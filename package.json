@@ -27,7 +27,7 @@
     "@types/express": "^5.0.3",
     "@types/node": "^24.3.0",
     "@types/pdfkit": "^0.17.6",
-    "tsx": "^4.19.2",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.2"
   }
 }
