@@ -126,6 +126,12 @@ test('Protected /api routes require API key when LOCAL_AGENT_API_KEY is set', as
     assert.equal(mockUnauth.getStatus(), 401)
     assert.deepEqual(mockUnauth.getJson(), { error: 'Unauthorized' })
 
+    const mockHealthUnauth = createMockReqRes({ method: 'GET', url: '/api/health' })
+    await dispatchRequest(app, mockHealthUnauth)
+
+    assert.equal(mockHealthUnauth.getStatus(), 401)
+    assert.deepEqual(mockHealthUnauth.getJson(), { error: 'Unauthorized' })
+
     const mockAuth = createMockReqRes({
       method: 'GET',
       url: '/api/tools',
