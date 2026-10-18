@@ -2,8 +2,59 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { runTool, toolSchemas, handlers, readFile, writeFile } from '../src/agent/tools.js'
+import { runTool, toolSchemas, handlers, readFile, writeFile, assertSafeUrl, listFiles } from '../src/agent/tools.js'
 import { ToolDoc } from '../src/agent/store.js'
+import axios from 'axios'
+
+test('assertSafeUrl validates correctly', async () => {
+  await assert.rejects(
+    async () => await assertSafeUrl('not a url'),
+    { message: 'Invalid URL format' }
+  )
+
+  await assert.rejects(
+    async () => await assertSafeUrl('ftp://example.com'),
+    { message: 'Only http and https protocols are allowed' }
+  )
+
+  await assert.rejects(
+    async () => await assertSafeUrl('http://localhost'),
+    { message: 'Access to local or internal network host is restricted' }
+  )
+
+  await assert.rejects(
+    async () => await assertSafeUrl('http://test.local'),
+    { message: 'Access to local or internal network host is restricted' }
+  )
+
+  await assert.rejects(
+    async () => await assertSafeUrl('http://[::1]'),
+    { message: 'Access to local or internal network host is restricted' }
+  )
+
+  await assert.rejects(
+    async () => await assertSafeUrl('http://0'),
+    { message: 'Access to private or local IP address is restricted' }
+  )
+
+  await assert.rejects(
+    async () => await assertSafeUrl('http://127.0.0.1'),
+    { message: 'Access to private or local IP address is restricted' }
+  )
+
+  await assert.rejects(
+    async () => await assertSafeUrl('http://127.0.0.1.nip.io'),
+    { message: 'Access to private or local IP address is restricted' }
+  )
+
+  await assert.doesNotReject(
+    async () => await assertSafeUrl('https://fc2.com')
+  )
+
+  await assert.doesNotReject(
+    async () => await assertSafeUrl('https://example.com')
+  )
+})
 
 const workspaceDir = path.resolve(process.env.WORKSPACE_DIR ?? './sandbox/workspace')
 

@@ -74,19 +74,6 @@ test('web.fetch prevents SSRF and non-http(s) requests', async () => {
       await fetchHandler({ url })
     })
   }
-
-  // Verify domain names that resolve to private/internal IP addresses are rejected by assertSafeUrl
-  const { assertSafeUrl } = await import('../src/agent/tools.js')
-  await assert.rejects(
-    async () => {
-      await assertSafeUrl('http://127.0.0.1.nip.io')
-    },
-    { message: 'Access to private or local IP address is restricted' }
-  )
-
-  // Ensure public domains starting with fc/fd or standard hostnames are allowed by assertSafeUrl logic
-  await assert.doesNotReject(async () => await assertSafeUrl('https://fc2.com'))
-  await assert.doesNotReject(async () => await assertSafeUrl('https://example.com'))
 })
 
 test('web.searchTavily and web.searchSearxng fallback send request with 10s timeout', async () => {
