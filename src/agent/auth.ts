@@ -11,13 +11,9 @@ export const chatRateLimiter = rateLimit({
 })
 
 function safeCompare(a: string, b: string): boolean {
-  const bufA = Buffer.from(a)
-  const bufB = Buffer.from(b)
-  if (bufA.length !== bufB.length) {
-    return false
-  }
-  // Use timingSafeEqual to prevent timing attacks on API key comparison
-  return crypto.timingSafeEqual(bufA, bufB)
+  const hashA = crypto.createHash('sha256').update(a).digest()
+  const hashB = crypto.createHash('sha256').update(b).digest()
+  return crypto.timingSafeEqual(hashA, hashB)
 }
 
 export function securityHeaders(_req: Request, res: Response, next: NextFunction) {
