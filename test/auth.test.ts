@@ -48,6 +48,10 @@ test('securityHeaders sets expected HTTP response headers and calls next', () =>
   assert.equal(headersSet['X-Frame-Options'], 'DENY')
   assert.equal(headersSet['X-XSS-Protection'], '0')
   assert.equal(headersSet['Referrer-Policy'], 'no-referrer')
+  assert.equal(
+    headersSet['Content-Security-Policy'],
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none';"
+  )
 })
 
 test('requireApiKey allows request when LOCAL_AGENT_API_KEY is not set', () => {
