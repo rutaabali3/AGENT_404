@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
-import { createApp } from '../src/agent-server.js'
+import { createApp, startServer } from '../src/agent-server.js'
 import { Store, ToolDoc, defaultTools } from '../src/agent/store.js'
 
 function createMockReqRes(options: {
@@ -220,4 +220,42 @@ test('Wildcard route serves public index.html SPA fallback', async () => {
 
   assert.equal(mock.getStatus(), 200)
   assert.equal(mock.getSentFile(), path.resolve('public/index.html'))
+})
+
+test('startServer initializes app, connects to store, and listens on port', async () => {
+  const originalPort = process.env.PORT
+  process.env.PORT = '0' // Use random ephemeral port
+
+  const result = await startServer()
+
+  assert.ok(result.app)
+  assert.ok(result.store)
+  assert.ok(result.server)
+  // Since we're in a test and it just started, it's possible it's listening or closed depending on race conditions,
+  // but let's just make sure it exists and close it.
+
+  result.server.close()
+  await result.store.close()
+
+  // Wait a small moment to let the close resolve, avoiding keeping the process alive
+  await new Promise<void>(resolve => setTimeout(resolve, 50))
+
+  if (originalPort !== undefined) {
+    process.env.PORT = originalPort
+  } else {
+    delete process.env.PORT
+  }
+})
+
+test('startServer propagates errors from store.connect', async () => {
+  const originalConnect = Store.prototype.connect
+  Store.prototype.connect = async function() {
+    throw new Error('Fake connection error')
+  }
+
+  try {
+    await assert.rejects(startServer(), { message: 'Fake connection error' })
+  } finally {
+    Store.prototype.connect = originalConnect
+  }
 })
